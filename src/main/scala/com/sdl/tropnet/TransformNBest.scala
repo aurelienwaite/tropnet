@@ -6,6 +6,7 @@ import java.io.FileWriter
 import java.util.zip.GZIPInputStream
 import resource._
 import scala.io.Source
+import com.sdl.Hypothesis
 
 object TransformNBest extends App{
 

@@ -1,5 +1,7 @@
 package com.sdl.tropnet
 
+import com.sdl.NBest._
+
 import java.io.File
 import java.io.FileWriter
 import scala.io.Source
