@@ -125,12 +125,11 @@ object SMERT {
     val conf = new SparkConf().setAppName("SMERT")
     for (l <- localThreads) conf.setMaster(s"local[$l]")
     val sc = new SparkContext(conf)
-    val rawNbests = sc.parallelize(loadUCamNBest(nbestsDir))
-    val nbests = (rawNbests map { n =>
+    val nbests = sc.parallelize(loadUCamNBest(nbestsDir) map { n =>{
       val mat= nbestToMatrix(n)
       val bs = n map (_.bs)
       (mat, bs)
-    }).repartition(noOfPartitions).cache
+    }}, noOfPartitions).cache
 
     val initials = scala.collection.immutable.Vector(initialPoint) ++ (for (i <- 0 until noOfInitials) yield getRandomVec(random, initialPoint.size))
     val res = for (i <- initials) yield iterate(sc, i, (0.0, 0.0), nbests, deltaBleu)
