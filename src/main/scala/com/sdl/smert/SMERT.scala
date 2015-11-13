@@ -1,6 +1,7 @@
 package com.sdl.smert
 
 import scala.collection.mutable.Buffer
+import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkConf
 import com.sdl.NBest._
@@ -11,6 +12,7 @@ import breeze.linalg.DenseVector
 import breeze.linalg.DenseMatrix
 import com.sdl.BleuStats
 import scala.annotation.tailrec
+import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.util.Random
 
@@ -26,10 +28,15 @@ object SMERT {
 
   }
 
-  def createProjectionMatrix(axis: Int, initial: Vector) = {
-    val dir = DenseVector.zeros[F](initial.length)
-    dir(axis) = 1
-    DenseMatrix.vertcat(dir.toDenseMatrix, initial.toDenseMatrix)
+  def nbestToMatrix(in : NBest) : DenseMatrix[Float] = {
+    require(in.size > 0, "NBest needs to have at least one element")
+    val fVecDim = in(0).fVec.size
+    val buf = new ArrayBuffer[Float]
+    for(hyp <- in) {
+      require(hyp.fVec.size == fVecDim, "Feature vecs must be of the same dimension")
+      buf ++= hyp.fVec.map ( _.toFloat * -1.0f)
+    }
+    new DenseMatrix(fVecDim, in.size, buf.toArray)
   }
 
   @tailrec
@@ -45,21 +52,9 @@ object SMERT {
     }
   }
 
-  def iteration(nbests: RDD[Tuple2[Matrix, IndexedSeq[BleuStats]]], point: Vector) = {
-    val swept = for {
-      (mat, bs) <- nbests
-    } yield (for {
-      d <- (0 until point.length).par
-      projection = createProjectionMatrix(d, point)
-    } yield {
-      val intervals = sweepLine(mat, projection)
-      val diffs = for (((currInterval, currBS), i) <- intervals.view.zipWithIndex) yield {
-        val prevBS = if (i == 0) currBS else intervals(i - 1)._2
-        (currInterval, bs(currBS), bs(currBS) - bs(prevBS))
-      }
-      val res = diffs.toSeq
-      res
-    }).seq // Very important to convert back from parallel to sequential, otherwise we get deadlocks in the reduce
+
+  def iteration(nbests: RDD[Tuple2[DenseMatrix[Float], IndexedSeq[BleuStats]]], point: DenseVector[Float]) = {
+    val swept = nbests.map ( Sweep.sweep(point)_)
     swept.cache
     val reduced = swept.reduce((a, b) => {
       for ((seqA, seqB) <- a zip b) yield {
@@ -78,29 +73,29 @@ object SMERT {
         else
           (intervalBoundary._1, error.computeBleu(), error)
       }
-      val max = intervals.sliding(2).maxBy(interval => if (interval(0)._1 == F.NegativeInfinity) Double.MinValue else interval(1)._2._1)
+      val max = intervals.sliding(2).maxBy(interval => if (interval(0)._1 == Float.NegativeInfinity) Double.MinValue else interval(1)._2._1)
       val best = max(1)
       val (bleu, bp) = best._2
       val prev = max(0)
       val update = (best._1 - prev._1) / 2
       println(f"Update at $update%s with BLEU: $bleu%.3f [$bp%.4f]")
-      val updatedPoint = DenseVector(update, 1).t * createProjectionMatrix(d, point)
+      val updatedPoint = DenseVector(update, 1).t * Sweep.createProjectionMatrix(d, point)
       (updatedPoint, (bleu, bp))
     }
     updates.maxBy(_._2)
   }
 
   @tailrec
-  def iterate(prevPoint: Vector, prevBleu: (Double, Double), nbests: RDD[Tuple2[Matrix, IndexedSeq[BleuStats]]], deltaBleu: Double): (Vector, (Double, Double)) = {
+  def iterate(sc : SparkContext, prevPoint: DenseVector[Float], prevBleu: (Double, Double), nbests: RDD[Tuple2[DenseMatrix[Float], IndexedSeq[BleuStats]]], deltaBleu: Double): (DenseVector[Float], (Double, Double)) = {
     val (point, (bleu, bp)) = iteration(nbests, prevPoint)
     if ((bleu - prevBleu._1) < deltaBleu) (prevPoint, prevBleu)
-    else iterate(point.t, (bleu, bp), nbests, deltaBleu)
+    else iterate(sc, point.t, (bleu, bp), nbests, deltaBleu)
   }
 
-  def getRandomVec(r: Random, dim: Int): Vector = DenseVector((for (d <- 0 until dim) yield Random.nextGaussian.toFloat).toArray: _*)
+  def getRandomVec(r: Random, dim: Int) = DenseVector((for (d <- 0 until dim) yield Random.nextGaussian.toFloat).toArray: _*)
 
   def main(args: Array[String]): Unit = {
-    case class Config(nbestsDir: File = new File("."), initialPoint: Vector = DenseVector(), localThreads: Option[Int] = None, noOfPartitions: Int = 100, deltaBleu: Double = 1.0E-4, random: Random = new Random(11l), noOfInitials: Int = 0)
+    case class Config(nbestsDir: File = new File("."), initialPoint: DenseVector[Float] = DenseVector(), localThreads: Option[Int] = None, noOfPartitions: Int = 100, deltaBleu: Double = 1.0E-4, random: Random = new Random(11l), noOfInitials: Int = 0)
     val parser = new scopt.OptionParser[Config]("smert") {
       head("smert", "1.0")
       //NBest Option
@@ -109,7 +104,7 @@ object SMERT {
       } validate (x => if (x.isDirectory()) success else failure("Nbest directory is not a directory")) text ("NBest input directory")
       // Initial point
       opt[String]('i', "initial") required () action { (x, c) =>
-        c.copy(initialPoint = stringToVec(x))
+        c.copy(initialPoint = DenseVector(x.split(",").map(_.toFloat)))
       } text ("Initital starting point")
       opt[Int]('l', "local_threads") action { (x, c) =>
         c.copy(localThreads = Some(x))
@@ -132,13 +127,13 @@ object SMERT {
     val sc = new SparkContext(conf)
     val rawNbests = sc.parallelize(loadUCamNBest(nbestsDir))
     val nbests = (rawNbests map { n =>
-      val mat: Matrix = n
+      val mat= nbestToMatrix(n)
       val bs = n map (_.bs)
       (mat, bs)
     }).repartition(noOfPartitions).cache
 
     val initials = scala.collection.immutable.Vector(initialPoint) ++ (for (i <- 0 until noOfInitials) yield getRandomVec(random, initialPoint.size))
-    val res = for (i <- initials) yield iterate(i, (0.0, 0.0), nbests, deltaBleu)
+    val res = for (i <- initials) yield iterate(sc, i, (0.0, 0.0), nbests, deltaBleu)
     val (finalPoint, (finalBleu, finalBP)) = res.maxBy(_._2._1)
     println(f"Found final point with BLEU $finalBleu%.3f [$finalBP%.4f]!")
     println(finalPoint)
