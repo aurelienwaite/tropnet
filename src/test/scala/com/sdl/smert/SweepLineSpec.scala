@@ -29,6 +29,23 @@ class SweepLineSpec extends FlatSpec with Matchers{
       val (swept, lmert) = interval
       swept should === (lmert +- DELTA)
     }
-
   }
+  
+  "For the fire vector of the NBest, SweepLine" should "find 52.2 BLEU in the centre" in {
+    val source = Source.fromURL(getClass.getResource("/fire.txt"))
+    val nBest = NBest.loadUCamNBest(source)
+    val a = DenseMatrix(
+        (0f,1f,0f,0f,0f,0f,0f,0f,0f,0f,0f,0f,0f ),
+        (0f,1.000000f,0.820073f,1.048347f,0.798443f,0.349793f,0.286489f,15.352371f,-5.753633f,-3.766533f,0.052922f,0.624889f,-0.015877f)
+    )
+    val b = DenseMatrix(
+        (0f,0f,0f,0f,0f,0f,0f,0f,0f,0f,0f,0f,0f ),
+        (0f,1.000000f,0.820073f,1.048347f,0.798443f,0.349793f,0.286489f,15.352371f,-5.753633f,-3.766533f,0.052922f,0.624889f,-0.015877f)
+    )
+    val projection = DenseMatrix.horzcat(a,b)
+    val sweptIntervals = sweepLine(nbestToMatrix(nBest), projection).map(_._1) 
+    println(sweptIntervals)
+  }
+  
+  
 }

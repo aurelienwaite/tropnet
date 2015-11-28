@@ -61,7 +61,7 @@ object SMERT {
         (seqA ++ seqB).toIndexedSeq
       }
     })
-    val updates = for ((collected, d) <- reduced.view.zipWithIndex.par) yield {
+    val updates = for ((collected, d) <- reduced.view.zipWithIndex) yield {
       val sortedLine = collected.sortBy(interval => interval._1)
       var error = BleuStats.empty
       val intervals = for (intervalBoundary <- sortedLine) yield {
@@ -73,6 +73,7 @@ object SMERT {
         else
           (intervalBoundary._1, error.computeBleu(), error)
       }
+      for(i <- intervals) println(i)
       val max = intervals.sliding(2).maxBy(interval => if (interval(0)._1 == Float.NegativeInfinity) Double.MinValue else interval(1)._2._1)
       val best = max(1)
       val (bleu, bp) = best._2

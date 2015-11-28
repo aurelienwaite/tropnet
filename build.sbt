@@ -18,7 +18,7 @@ mainClass in assembly := Some("com.example.Main")
 
 libraryDependencies ++= Seq(
 	"com.jsuereth" %% "scala-arm" % "1.4",
-	"org.apache.spark" %% "spark-mllib" % "1.5.1" % "provided",
+	"org.apache.spark" %% "spark-mllib" % "1.5.2" % "provided",
 	"org.scalatest" %% "scalatest" % "2.2.4" % "test",
 	"org.scalanlp" %% "breeze-natives" % "0.11.2",
 	"com.github.scopt" %% "scopt" % "3.3.0"
