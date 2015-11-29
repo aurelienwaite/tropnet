@@ -73,7 +73,7 @@ object SMERT {
         else
           (intervalBoundary._1, error.computeBleu(), error)
       }
-      for(i <- intervals) println(i)
+      //for(i <- intervals) println(i)
       val max = intervals.sliding(2).maxBy(interval => if (interval(0)._1 == Float.NegativeInfinity) Double.MinValue else interval(1)._2._1)
       val best = max(1)
       val (bleu, bp) = best._2
@@ -96,7 +96,15 @@ object SMERT {
   def getRandomVec(r: Random, dim: Int) = DenseVector((for (d <- 0 until dim) yield Random.nextGaussian.toFloat).toArray: _*)
 
   def main(args: Array[String]): Unit = {
-    case class Config(nbestsDir: File = new File("."), initialPoint: DenseVector[Float] = DenseVector(), localThreads: Option[Int] = None, noOfPartitions: Int = 100, deltaBleu: Double = 1.0E-4, random: Random = new Random(11l), noOfInitials: Int = 0)
+    case class Config(
+        nbestsDir: File = new File("."), 
+        initialPoint: DenseVector[Float] = DenseVector(), 
+        localThreads: Option[Int] = None, 
+        noOfPartitions: Int = 100, 
+        deltaBleu: Double = 1.0E-4, 
+        random: Random = new Random(11l), 
+        noOfInitials: Int = 1000,
+        out: File = new File("./params"))
     val parser = new scopt.OptionParser[Config]("smert") {
       head("smert", "1.0")
       //NBest Option
@@ -119,6 +127,9 @@ object SMERT {
       opt[Int]('r', "random_seed") action { (x, c) =>
         c.copy(random = new Random(x))
       } text ("Random Seed")
+      opt[File]('o', "output") required () action { (x, c) =>
+        c.copy(out = x)
+      } 
     }
     val cliConf = parser.parse(args, Config()).getOrElse(sys.exit())
     println(cliConf)
@@ -136,6 +147,7 @@ object SMERT {
     val res = for (i <- initials) yield iterate(sc, i, (0.0, 0.0), nbests, deltaBleu)
     val (finalPoint, (finalBleu, finalBP)) = res.maxBy(_._2._1)
     println(f"Found final point with BLEU $finalBleu%.3f [$finalBP%.4f]!")
+    breeze.linalg.csvwrite(out, finalPoint.toDenseMatrix.map(_.toDouble))
     println(finalPoint)
   }
 
