@@ -45,7 +45,7 @@ object Sweep {
           else 
             j -= 1
         }
-        if (j == 0) 
+        if (j == 0)
           l.x = Float.NegativeInfinity
         a(j) = l
         j += 1

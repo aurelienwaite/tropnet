@@ -55,7 +55,6 @@ object SMERT {
   def iteration(nbests: Broadcast[Seq[Tuple2[DenseMatrix[Float], IndexedSeq[BleuStats]]]],
       indices: RDD[Int], point: DenseVector[Float]) = {
     val swept = indices.map(nbests.value(_)).map(Sweep.sweep(point)_)
-    swept.cache
     val reduced = swept.reduce((a, b) => {
       for ((seqA, seqB) <- a zip b) yield {
         (seqA ++ seqB).toIndexedSeq
@@ -79,7 +78,7 @@ object SMERT {
       val (bleu, bp) = best._2
       val prev = max(0)
       val update = (best._1 - prev._1) / 2
-      println(f"Update at $update%s with BLEU: $bleu%.3f [$bp%.4f]")
+      println(f"Direction $d: Update at $update%s with BLEU: $bleu%.6f [$bp%.4f]")
       val updatedPoint = DenseVector(update, 1).t * Sweep.createProjectionMatrix(d, point)
       (updatedPoint, (bleu, bp))
     }
@@ -87,7 +86,7 @@ object SMERT {
   }
 
   @tailrec
-  def iterate(sc: SparkContext, prevPoint: DenseVector[Float], prevBleu: (Double, Double), nbests: Broadcast[Seq[Tuple2[DenseMatrix[Float], IndexedSeq[BleuStats]]]], 
+  def iterate(sc: SparkContext, prevPoint: DenseVector[Float], prevBleu: (Double, Double), nbests: Broadcast[Seq[Tuple2[DenseMatrix[Float], IndexedSeq[BleuStats]]]],
       indices : RDD[Int], deltaBleu: Double): (DenseVector[Float], (Double, Double)) = {
     val (point, (bleu, bp)) = iteration(nbests, indices, prevPoint)
     if ((bleu - prevBleu._1) < deltaBleu) (prevPoint, prevBleu)
@@ -102,9 +101,9 @@ object SMERT {
       initialPoint: DenseVector[Float] = DenseVector(),
       localThreads: Option[Int] = None,
       noOfPartitions: Int = 100,
-      deltaBleu: Double = 1.0E-4,
+      deltaBleu: Double = 1.0E-6,
       random: Random = new Random(11l),
-      noOfInitials: Int = 1000,
+      noOfInitials: Int = 0,
       out: File = new File("./params"))
     val parser = new scopt.OptionParser[Config]("smert") {
       head("smert", "1.0")
@@ -148,13 +147,11 @@ object SMERT {
     }.seq
     val indices = sc.parallelize(0 until nbests.length)
     val nbestsBroadcast = sc.broadcast(nbests)
-
     val initials = scala.collection.immutable.Vector(initialPoint) ++ (for (i <- 0 until noOfInitials) yield getRandomVec(random, initialPoint.size))
     val res = for (i <- initials) yield iterate(sc, i, (0.0, 0.0), nbestsBroadcast, indices, deltaBleu)
     val (finalPoint, (finalBleu, finalBP)) = res.maxBy(_._2._1)
-    println(f"Found final point with BLEU $finalBleu%.3f [$finalBP%.4f]!")
+    println(f"Found final point with BLEU $finalBleu%.6f [$finalBP%.4f]!")
     breeze.linalg.csvwrite(out, finalPoint.toDenseMatrix.map(_.toDouble))
     println(finalPoint)
   }
-
 }
