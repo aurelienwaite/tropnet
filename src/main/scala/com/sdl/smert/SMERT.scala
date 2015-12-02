@@ -8,13 +8,17 @@ import com.sdl.NBest._
 import java.io.File
 import org.apache.spark.rdd.RDD
 import org.apache.spark.mllib.linalg.distributed.RowMatrix
-import breeze.linalg.DenseVector
-import breeze.linalg.DenseMatrix
+import breeze.linalg._
+import breeze.numerics._
 import com.sdl.BleuStats
 import scala.annotation.tailrec
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.util.Random
+import breeze.stats.distributions.Gaussian
+import breeze.stats.distributions.RandBasis
+import org.apache.commons.math3.random.RandomGenerator
+import org.apache.commons.math3.random.MersenneTwister
 
 object SMERT {
 
@@ -28,6 +32,12 @@ object SMERT {
 
   }
 
+  def generateDirections(r : RandBasis, d : Int, noOfRandom : Int) = {
+     val axes = DenseMatrix.eye[Float](d)
+     val rand = DenseMatrix.rand(noOfRandom, d, Gaussian(0, 1)(r)).map(_.toFloat)
+     DenseMatrix.vertcat(axes, rand)
+  }
+  
   def nbestToMatrix(in: NBest): DenseMatrix[Float] = {
     require(in.size > 0, "NBest needs to have at least one element")
     val fVecDim = in(0).fVec.size
@@ -53,8 +63,8 @@ object SMERT {
   }
 
   def iteration(nbests: Broadcast[Seq[Tuple2[DenseMatrix[Float], IndexedSeq[BleuStats]]]],
-      indices: RDD[Int], point: DenseVector[Float]) = {
-    val swept = indices.map(nbests.value(_)).map(Sweep.sweep(point)_)
+      indices: RDD[Int], point: DenseVector[Float], directions : DenseMatrix[Float]) = {
+    val swept = indices.map(nbests.value(_)).map(Sweep.sweep(point, directions)_)
     val reduced = swept.reduce((a, b) => {
       for ((seqA, seqB) <- a zip b) yield {
         (seqA ++ seqB).toIndexedSeq
@@ -79,7 +89,7 @@ object SMERT {
       val prev = max(0)
       val update = (best._1 - prev._1) / 2
       println(f"Direction $d: Update at $update%s with BLEU: $bleu%.6f [$bp%.4f]")
-      val updatedPoint = DenseVector(update, 1).t * Sweep.createProjectionMatrix(d, point)
+      val updatedPoint = DenseVector(update, 1).t * Sweep.createProjectionMatrix(directions(d, ::).t, point)
       (updatedPoint, (bleu, bp))
     }
     updates.maxBy(_._2)
@@ -87,13 +97,14 @@ object SMERT {
 
   @tailrec
   def iterate(sc: SparkContext, prevPoint: DenseVector[Float], prevBleu: (Double, Double), nbests: Broadcast[Seq[Tuple2[DenseMatrix[Float], IndexedSeq[BleuStats]]]],
-      indices : RDD[Int], deltaBleu: Double): (DenseVector[Float], (Double, Double)) = {
-    val (point, (bleu, bp)) = iteration(nbests, indices, prevPoint)
-    if ((bleu - prevBleu._1) < deltaBleu) (prevPoint, prevBleu)
-    else iterate(sc, point.t, (bleu, bp), nbests, indices, deltaBleu)
+      indices : RDD[Int], deltaBleu: Double, r : RandBasis, noOfRandom : Int): (DenseVector[Float], (Double, Double)) = {
+    val directions = generateDirections(r, prevPoint.length, noOfRandom)
+    val (point, (bleu, bp)) = iteration(nbests, indices, prevPoint, directions)
+    if ((bleu - prevBleu._1) < deltaBleu) 
+      (prevPoint, prevBleu)
+    else 
+      iterate(sc, point.t, (bleu, bp), nbests, indices, deltaBleu, r, noOfRandom)    
   }
-
-  def getRandomVec(r: Random, dim: Int) = DenseVector((for (d <- 0 until dim) yield Random.nextGaussian.toFloat).toArray: _*)
 
   def main(args: Array[String]): Unit = {
     case class Config(
@@ -102,8 +113,9 @@ object SMERT {
       localThreads: Option[Int] = None,
       noOfPartitions: Int = 100,
       deltaBleu: Double = 1.0E-6,
-      random: Random = new Random(11l),
+      random: RandomGenerator = new MersenneTwister(11l),
       noOfInitials: Int = 0,
+      noOfRandom: Int = 250,
       out: File = new File("./params"))
     val parser = new scopt.OptionParser[Config]("smert") {
       head("smert", "1.0")
@@ -125,7 +137,7 @@ object SMERT {
         c.copy(deltaBleu = x.toDouble)
       } text ("Termination condition for the BLEU score")
       opt[Int]('r', "random_seed") action { (x, c) =>
-        c.copy(random = new Random(x))
+        c.copy(random = new MersenneTwister(x))
       } text ("Random Seed")
       opt[File]('o', "output") required () action { (x, c) =>
         c.copy(out = x)
@@ -135,6 +147,7 @@ object SMERT {
     println(cliConf)
     import cliConf._
     val conf = new SparkConf().setAppName("SMERT")
+    val rb = new RandBasis(random)
     for (l <- localThreads) conf.setMaster(s"local[$l]")
     val sc = new SparkContext(conf)
     val nbests = loadUCamNBest(nbestsDir).par.map {
@@ -147,8 +160,9 @@ object SMERT {
     }.seq
     val indices = sc.parallelize(0 until nbests.length)
     val nbestsBroadcast = sc.broadcast(nbests)
-    val initials = scala.collection.immutable.Vector(initialPoint) ++ (for (i <- 0 until noOfInitials) yield getRandomVec(random, initialPoint.size))
-    val res = for (i <- initials) yield iterate(sc, i, (0.0, 0.0), nbestsBroadcast, indices, deltaBleu)
+    val initials = scala.collection.immutable.Vector(initialPoint) ++ 
+      (for (i <- 0 until noOfInitials) yield DenseVector.rand(initialPoint.size, Gaussian(0,1)(rb)).map(_.toFloat))
+    val res = for (i <- initials) yield iterate(sc, i, (0.0, 0.0), nbestsBroadcast, indices, deltaBleu, rb, noOfRandom)
     val (finalPoint, (finalBleu, finalBP)) = res.maxBy(_._2._1)
     println(f"Found final point with BLEU $finalBleu%.6f [$finalBP%.4f]!")
     breeze.linalg.csvwrite(out, finalPoint.toDenseMatrix.map(_.toDouble))

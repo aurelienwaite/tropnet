@@ -7,11 +7,9 @@ import java.io.File
 
 object Sweep {
 
-  def createProjectionMatrix(axis: Int, initial: DenseVector[Float]) = {
-    val dir = DenseVector.zeros[Float](initial.length)
-    dir(axis) = 1
-    DenseMatrix.vertcat(dir.toDenseMatrix, initial.toDenseMatrix)
-  }
+  def createProjectionMatrix(direction : DenseVector[Float], initial: DenseVector[Float]) = 
+    DenseMatrix.vertcat(direction.toDenseMatrix, initial.toDenseMatrix)
+  
 
   def sweepLine(in: DenseMatrix[Float], projection: DenseMatrix[Float]): IndexedSeq[(Float, Int)] = {
     require(projection.rows == 2, "Can only project to lines")
@@ -54,11 +52,11 @@ object Sweep {
     for (i <- (0 until j)) yield (a(i).x, a(i).index)
   }
 
-  def sweep(point: DenseVector[Float])(in: Tuple2[DenseMatrix[Float], IndexedSeq[BleuStats]]) = {
+  def sweep(point: DenseVector[Float], directions : DenseMatrix[Float])(in: Tuple2[DenseMatrix[Float], IndexedSeq[BleuStats]]) = {
     val (mat, bs) = in
     for {
-      d <- (0 until point.length)
-      projection = createProjectionMatrix(d, point)
+      d <- 0 until directions.rows
+      projection = createProjectionMatrix(directions(d,::).t, point)
     } yield {
       val intervals = sweepLine(mat, projection)
       val diffs = for (((currInterval, currBS), i) <- intervals.view.zipWithIndex) yield {
