@@ -38,7 +38,7 @@ object NegativeWeight {
     val sparkConf = new SparkConf().setAppName("Negative Weight")
     sparkConf.setMaster("local[8]")
     implicit val sc = new SparkContext(sparkConf)
-    val smertInitial = DenseVector(0,0,0,0,0,0,0,0,0,0,0,0,0,1).map(_.toFloat)
+    val smertInitial = DenseVector(0,0,0,0,0,0,0,0,0,0,0,0,0,0,1).map(_.toFloat)
     val conf = SMERT.Config(initialPoint = smertInitial)
     SMERT.doSmert(input.seq, conf)  
   }
