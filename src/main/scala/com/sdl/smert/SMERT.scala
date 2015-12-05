@@ -21,6 +21,17 @@ import org.apache.commons.math3.random.RandomGenerator
 import org.apache.commons.math3.random.MersenneTwister
 
 object SMERT {
+  
+    case class Config(
+      nbestsDir: File = new File("."),
+      initialPoint: DenseVector[Float] = DenseVector(),
+      localThreads: Option[Int] = None,
+      noOfPartitions: Int = 100,
+      deltaBleu: Double = 1.0E-6,
+      random: RandomGenerator = new MersenneTwister(11l),
+      noOfInitials: Int = 50,
+      noOfRandom: Int = 100,
+      out: File = new File("./params"))  
 
   def doSvd(): Unit = {
     /*    val trainingSet : RDD[org.apache.spark.mllib.linalg.Vector] = for(nbest <- nbests; hyp <- nbest) yield{
@@ -106,17 +117,21 @@ object SMERT {
       iterate(sc, point.t, (bleu, bp), nbests, indices, deltaBleu, r, noOfRandom)    
   }
 
+  def doSmert(nbests : Seq[(DenseMatrix[Float], IndexedSeq[BleuStats])], conf : Config)(implicit sc : SparkContext) = {
+    import conf._
+    val rb = new RandBasis(random)
+    val indices = sc.parallelize(0 until nbests.length)
+    val nbestsBroadcast = sc.broadcast(nbests)
+    val initials = scala.collection.immutable.Vector(initialPoint) ++ 
+    (for (i <- 0 until noOfInitials) yield DenseVector.rand(initialPoint.size, Gaussian(0,10)(rb)).map(_.toFloat))
+    val res = for (i <- initials.par) yield iterate(sc, i, (0.0, 0.0), nbestsBroadcast, indices, deltaBleu, rb, noOfRandom)
+    val (finalPoint, (finalBleu, finalBP)) = res.maxBy(_._2._1)
+    println(f"Found final point with BLEU $finalBleu%.6f [$finalBP%.4f]!")
+    breeze.linalg.csvwrite(out, finalPoint.toDenseMatrix.map(_.toDouble))
+    println(finalPoint)
+  }
+  
   def main(args: Array[String]): Unit = {
-    case class Config(
-      nbestsDir: File = new File("."),
-      initialPoint: DenseVector[Float] = DenseVector(),
-      localThreads: Option[Int] = None,
-      noOfPartitions: Int = 100,
-      deltaBleu: Double = 1.0E-6,
-      random: RandomGenerator = new MersenneTwister(11l),
-      noOfInitials: Int = 0,
-      noOfRandom: Int = 250,
-      out: File = new File("./params"))
     val parser = new scopt.OptionParser[Config]("smert") {
       head("smert", "1.0")
       //NBest Option
@@ -139,6 +154,12 @@ object SMERT {
       opt[Int]('r', "random_seed") action { (x, c) =>
         c.copy(random = new MersenneTwister(x))
       } text ("Random Seed")
+      opt[Int]('d', "directions") action { (x, c) =>
+        c.copy(noOfRandom = x)
+      } text ("Number of random directions")
+      opt[Int]('n', "no_initials") action { (x, c) =>
+        c.copy(noOfInitials = x)
+      } text ("Number of randon initial points")
       opt[File]('o', "output") required () action { (x, c) =>
         c.copy(out = x)
       }
@@ -147,9 +168,8 @@ object SMERT {
     println(cliConf)
     import cliConf._
     val conf = new SparkConf().setAppName("SMERT")
-    val rb = new RandBasis(random)
     for (l <- localThreads) conf.setMaster(s"local[$l]")
-    val sc = new SparkContext(conf)
+    implicit val sc = new SparkContext(conf)
     val nbests = loadUCamNBest(nbestsDir).par.map {
       n =>
         {
@@ -158,14 +178,6 @@ object SMERT {
           (mat, bs)
         }
     }.seq
-    val indices = sc.parallelize(0 until nbests.length)
-    val nbestsBroadcast = sc.broadcast(nbests)
-    val initials = scala.collection.immutable.Vector(initialPoint) ++ 
-      (for (i <- 0 until noOfInitials) yield DenseVector.rand(initialPoint.size, Gaussian(0,1)(rb)).map(_.toFloat))
-    val res = for (i <- initials) yield iterate(sc, i, (0.0, 0.0), nbestsBroadcast, indices, deltaBleu, rb, noOfRandom)
-    val (finalPoint, (finalBleu, finalBP)) = res.maxBy(_._2._1)
-    println(f"Found final point with BLEU $finalBleu%.6f [$finalBP%.4f]!")
-    breeze.linalg.csvwrite(out, finalPoint.toDenseMatrix.map(_.toDouble))
-    println(finalPoint)
+    doSmert(nbests, cliConf)
   }
 }
