@@ -33,7 +33,7 @@ object NegativeWeight {
       mat = SMERT.nbestToMatrix(fire)
       projected = projection * mat  
       negated = projected.map(_ * -1.0f)
-      bs = nbest map (_.bs)
+      bs = fire map (_.bs)
     } yield (projected, bs)
     val sparkConf = new SparkConf().setAppName("Negative Weight")
     sparkConf.setMaster("local[8]")
