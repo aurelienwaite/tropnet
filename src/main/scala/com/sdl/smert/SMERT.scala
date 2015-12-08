@@ -1,5 +1,6 @@
 package com.sdl.smert
 
+import org.apache.commons.math3.random.JDKRandomGenerator
 import scala.collection.mutable.Buffer
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.SparkContext
@@ -18,20 +19,26 @@ import scala.util.Random
 import breeze.stats.distributions.Gaussian
 import breeze.stats.distributions.RandBasis
 import org.apache.commons.math3.random.RandomGenerator
-import org.apache.commons.math3.random.MersenneTwister
+import org.apache.commons.math3.random.JDKRandomGenerator
 
 object SMERT {
-  
+
+  def getGenerator(seed : Int = 11) = {
+    val r = new JDKRandomGenerator()
+    r.setSeed(seed.toLong)
+    r
+  }
+
     case class Config(
       nbestsDir: File = new File("."),
       initialPoint: DenseVector[Float] = DenseVector(),
       localThreads: Option[Int] = None,
       noOfPartitions: Int = 100,
       deltaBleu: Double = 1.0E-6,
-      random: RandomGenerator = new MersenneTwister(11l),
+      random: RandomGenerator = getGenerator(),
       noOfInitials: Int = 50,
       noOfRandom: Int = 100,
-      out: File = new File("./params"))  
+      out: File = new File("./params"))
 
   def doSvd(): Unit = {
     /*    val trainingSet : RDD[org.apache.spark.mllib.linalg.Vector] = for(nbest <- nbests; hyp <- nbest) yield{
@@ -48,7 +55,7 @@ object SMERT {
      val rand = DenseMatrix.rand(noOfRandom, d, Gaussian(0, 1)(r)).map(_.toFloat)
      DenseMatrix.vertcat(axes, rand)
   }
-  
+
   def nbestToMatrix(in: NBest): DenseMatrix[Float] = {
     require(in.size > 0, "NBest needs to have at least one element")
     val fVecDim = in(0).fVec.size
@@ -100,8 +107,12 @@ object SMERT {
       val prev = max(0)
       val update = (best._1 - prev._1) / 2
       println(f"Direction $d: Update at $update%s with BLEU: $bleu%.6f [$bp%.4f]")
-      val updatedPoint = DenseVector(update, 1).t * Sweep.createProjectionMatrix(directions(d, ::).t, point)
-      (updatedPoint, (bleu, bp))
+      if (!update.isNaN){
+        val updatedPoint = DenseVector(update, 1).t * Sweep.createProjectionMatrix(directions(d, ::).t, point)
+        (updatedPoint, (bleu, bp))
+      }
+      else
+        (point.t, (0.0, 0.0))
     }
     updates.maxBy(_._2)
   }
@@ -111,10 +122,10 @@ object SMERT {
       indices : RDD[Int], deltaBleu: Double, r : RandBasis, noOfRandom : Int): (DenseVector[Float], (Double, Double)) = {
     val directions = generateDirections(r, prevPoint.length, noOfRandom)
     val (point, (bleu, bp)) = iteration(nbests, indices, prevPoint, directions)
-    if ((bleu - prevBleu._1) < deltaBleu) 
+    if ((bleu - prevBleu._1) < deltaBleu)
       (prevPoint, prevBleu)
-    else 
-      iterate(sc, point.t, (bleu, bp), nbests, indices, deltaBleu, r, noOfRandom)    
+    else
+      iterate(sc, point.t, (bleu, bp), nbests, indices, deltaBleu, r, noOfRandom)
   }
 
   def doSmert(nbests : Seq[(DenseMatrix[Float], IndexedSeq[BleuStats])], conf : Config)(implicit sc : SparkContext) = {
@@ -122,7 +133,7 @@ object SMERT {
     val rb = new RandBasis(random)
     val indices = sc.parallelize(0 until nbests.length)
     val nbestsBroadcast = sc.broadcast(nbests)
-    val initials = scala.collection.immutable.Vector(initialPoint) ++ 
+    val initials = scala.collection.immutable.Vector(initialPoint) ++
     (for (i <- 0 until noOfInitials) yield DenseVector.rand(initialPoint.size, Gaussian(0,10)(rb)).map(_.toFloat))
     val res = for (i <- initials.par) yield iterate(sc, i, (0.0, 0.0), nbestsBroadcast, indices, deltaBleu, rb, noOfRandom)
     val (finalPoint, (finalBleu, finalBP)) = res.maxBy(_._2._1)
@@ -130,7 +141,7 @@ object SMERT {
     breeze.linalg.csvwrite(out, finalPoint.toDenseMatrix.map(_.toDouble))
     println(finalPoint)
   }
-  
+
   def main(args: Array[String]): Unit = {
     val parser = new scopt.OptionParser[Config]("smert") {
       head("smert", "1.0")
@@ -152,7 +163,7 @@ object SMERT {
         c.copy(deltaBleu = x.toDouble)
       } text ("Termination condition for the BLEU score")
       opt[Int]('r', "random_seed") action { (x, c) =>
-        c.copy(random = new MersenneTwister(x))
+        c.copy(random = getGenerator(x))
       } text ("Random Seed")
       opt[Int]('d', "directions") action { (x, c) =>
         c.copy(noOfRandom = x)
