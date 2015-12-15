@@ -4,12 +4,12 @@ import breeze.linalg._
 import com.sdl.BleuStats
 import scala.collection.mutable
 import java.io.File
+import scala.collection.mutable.ArrayBuffer
 
 object Sweep {
 
-  def createProjectionMatrix(direction : DenseVector[Float], initial: DenseVector[Float]) = 
+  def createProjectionMatrix(direction: DenseVector[Float], initial: DenseVector[Float]) =
     DenseMatrix.vertcat(direction.toDenseMatrix, initial.toDenseMatrix)
-  
 
   def sweepLine(in: DenseMatrix[Float], projection: DenseMatrix[Float]): IndexedSeq[(Float, Int)] = {
     require(projection.rows == 2, "Can only project to lines")
@@ -23,7 +23,6 @@ object Sweep {
     val projected = projection * in
     val s = breeze.linalg.argsort(projected(0, ::).t) // s for sorted
     val a: mutable.IndexedSeq[L] = mutable.IndexedSeq.fill(in.cols)(null)
-    breeze.linalg.csvwrite(new File("/tmp/projected"), projected.t.map(_.toDouble))
     var j, sIndex = 0
     val end = s.size;
     while (sIndex < end) {
@@ -33,14 +32,14 @@ object Sweep {
         a(j) = l
         j += 1
       } else if (!(a(j - 1).m == l.m && l.y <= a(j - 1).y)) {
-        if (a(j - 1).m == l.m) 
+        if (a(j - 1).m == l.m)
           j = j - 1
         var exit = false
         while (0 < j && !exit) {
           l.x = (l.y - a(j - 1).y) / (a(j - 1).m - l.m)
           if (a(j - 1).x < l.x)
             exit = true
-          else 
+          else
             j -= 1
         }
         if (j == 0)
@@ -52,19 +51,25 @@ object Sweep {
     for (i <- (0 until j)) yield (a(i).x, a(i).index)
   }
 
-  def sweep(point: DenseVector[Float], directions : DenseMatrix[Float])(in: Tuple2[DenseMatrix[Float], IndexedSeq[BleuStats]]) = {
+  def sweep(point: DenseVector[Float], directions: DenseMatrix[Float])(in: Tuple2[DenseMatrix[Float], IndexedSeq[BleuStats]]) = {
     val (mat, bs) = in
     for {
       d <- 0 until directions.rows
-      projection = createProjectionMatrix(directions(d,::).t, point)
+      projection = createProjectionMatrix(directions(d, ::).t, point)
     } yield {
       val intervals = sweepLine(mat, projection)
-      val diffs = for (((currInterval, currBS), i) <- intervals.view.zipWithIndex) yield {
-        val prevBS = if (i == 0) currBS else intervals(i - 1)._2
-        (currInterval, bs(currBS), bs(currBS) - bs(prevBS))
+      val withBS = for ((currInterval, currBS) <- intervals) yield (currInterval, bs(currBS))
+      val diffs = mutable.ArrayBuffer[(Float, BleuStats)]()
+      diffs.sizeHint(intervals.length - 1)
+      val startBS = withBS.head._2
+      withBS.drop(1).foldLeft((diffs, startBS)){ (a, c) =>
+        val (accum, prevBS) = a
+        val (interval, currBS) = c
+        val diff = (interval, currBS - prevBS)
+        accum += diff
+        (accum, currBS)
       }
-      val res = diffs.toSeq
-      res
+      (startBS, diffs)
     }
   }
 

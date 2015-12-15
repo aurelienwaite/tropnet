@@ -34,7 +34,16 @@ object NegativeWeight {
       projected = projection * mat  
       negated = projected.map(_ * -1.0f)
       bs = fire map (_.bs)
-    } yield (projected, bs)
+    } yield (negated, bs)
+    
+    /*val params = DenseVector(4.444362, 6.521777, 10.26614, 11.057872, -4.727493, 18.885849, 12.249861, -14.08159, -14.655475, 3.0803752, 0.6224642, -10.696804, -1.7164031, -3.6025164, -1.36588).map(_.toFloat).t
+    val bleu = input.seq.map { case (proj, bs) =>
+      val scores = (params * proj).t
+      bs(argsort(scores).last)
+    }.reduce(_+_)
+    println(bleu.computeBleu())
+    sys.exit*/
+    
     val sparkConf = new SparkConf().setAppName("Negative Weight")
     sparkConf.setMaster("local[8]")
     implicit val sc = new SparkContext(sparkConf)
