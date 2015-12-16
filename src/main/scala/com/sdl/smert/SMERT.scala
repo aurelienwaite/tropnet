@@ -64,7 +64,7 @@ object SMERT {
     val axes = for(i <- 0 until d) yield {
       if(affineDim.map(_!=i).getOrElse(true)) {
         val row = DenseMatrix.zeros[Float](1, d)
-        row(1, i) = 1f
+        row(0, i) = 1f
         Some(row)
       } else None
     }
