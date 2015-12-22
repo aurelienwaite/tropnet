@@ -35,6 +35,8 @@ object BleuStats {
 
   val empty = new BleuStats(for (i <- 0 until MAX_ORDER) yield (0, 0), 0)
 
+  val bad = new BleuStats(for (i <- 0 until MAX_ORDER) yield (0, 999), 999)
+  
   def apply(bsString: String) = {
     val fields = bsString.split("; ").map(_.split("/").map(_.toInt))
     val bleuHits = for (i <- 0 until BleuStats.MAX_ORDER) yield Tuple2(fields(i)(0), fields(i)(1))
