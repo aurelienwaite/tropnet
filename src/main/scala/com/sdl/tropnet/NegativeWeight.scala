@@ -59,8 +59,8 @@ object NegativeWeight {
       nbest <- nbests
       bs = nbest map (_.bs)
       mat = SMERT.nbestToMatrix(nbest)
-      projected = projection * mat 
-      (fire, fireBS) = fireVectors(expandMatrix(projected), (1.0f, -0.25f), bs)
+      projected = projection * expandMatrix(mat) 
+      (fire, fireBS) = fireVectors(projected, (1.0f, -0.25f), bs)
       negated = fire.map(_ * -1.0f)
     } yield (negated, fireBS)
     
