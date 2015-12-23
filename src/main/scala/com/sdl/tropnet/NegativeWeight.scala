@@ -63,9 +63,9 @@ object NegativeWeight {
       mat = SMERT.nbestToMatrix(nbest)
       expanded = expandMatrix(mat) 
       projected = projection * expanded
-      (fire, fireBS) = fireVectors(projected, (1.0f, -0.25f), bs)
-      negated = fire.map(_ * -1.0f)
-    } yield (negated, fireBS)
+      (fire, fireBS) = fireVectors(projected, (1.0f, 1.0f), bs)
+      //negated = fire.map(_ * -1.0f)
+    } yield (fire, fireBS)
     
     
     /*val params = DenseVector(4.444362, 6.521777, 10.26614, 11.057872, -4.727493, 18.885849, 12.249861, -14.08159, -14.655475, 3.0803752, 0.6224642, -10.696804, -1.7164031, -3.6025164, -1.36588).map(_.toFloat).t
@@ -79,7 +79,7 @@ object NegativeWeight {
     val sparkConf = new SparkConf().setAppName("Negative Weight")
     sparkConf.setMaster("local[8]")
     implicit val sc = new SparkContext(sparkConf)
-    val smertInitial = DenseVector(0,0,0,0,0,0,0,0,0,0,0,0,0,1).map(_.toFloat)
+    val smertInitial = DenseVector(0.0,1.000000,0.820073,1.048347,0.798443,0.349793,0.286489,15.352371,-5.753633,-3.766533,0.052922,0.624889,-0.015877,1).map(_.toFloat)
     val conf = SMERT.Config(initialPoint = smertInitial, affineDim = Some(13))
     SMERT.doSmert(input.seq, conf)  
   }
