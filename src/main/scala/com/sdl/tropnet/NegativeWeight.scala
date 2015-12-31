@@ -36,7 +36,7 @@ object NegativeWeight {
       fireBS += bleuStats(c)
     }
     fireVecs += DenseVector.zeros[Float](projected.rows)
-    fireBS += BleuStats.bad
+    fireBS += bleuStats(0)
     println(s"${projected.cols} ${fireVecs.size}")
     (DenseMatrix.horzcat(fireVecs.map(_.toDenseMatrix.t):_*), fireBS)
   }
