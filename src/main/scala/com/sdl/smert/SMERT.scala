@@ -147,7 +147,7 @@ object SMERT {
       iterate(sc, point.t, (bleu, bp), nbests, indices, deltaBleu, r, noOfRandom, affineDim)
   }
 
-  def doSmert(nbests: Seq[(DenseMatrix[Float], IndexedSeq[BleuStats])], conf: Config)(implicit sc: SparkContext) = {
+  def doSmert(nbests: Seq[(DenseMatrix[Float], IndexedSeq[BleuStats])], conf: Config)(implicit sc: SparkContext) : (DenseVector[Float], (Double, Double))= {
     import conf._
     val rb = new RandBasis(random)
     val indices = sc.parallelize(0 until nbests.length)
@@ -161,8 +161,7 @@ object SMERT {
     val res = for (i <- initials.par) yield iterate(sc, i, (0.0, 0.0), nbestsBroadcast, indices, deltaBleu, rb, noOfRandom, affineDim)
     val (finalPoint, (finalBleu, finalBP)) = res.maxBy(_._2._1)
     println(f"Found final point with BLEU $finalBleu%.6f [$finalBP%.4f]!")
-    breeze.linalg.csvwrite(out, finalPoint.toDenseMatrix.map(_.toDouble))
-    println(finalPoint)
+    (finalPoint, (finalBleu, finalBP))
   }
 
   def main(args: Array[String]): Unit = {
@@ -212,6 +211,8 @@ object SMERT {
           (mat, bs)
         }
     }.seq
-    doSmert(nbests, cliConf)
+    val (finalPoint,_) = doSmert(nbests, cliConf)
+    breeze.linalg.csvwrite(out, finalPoint.toDenseMatrix.map(_.toDouble))
+    println(finalPoint)
   }
 }
