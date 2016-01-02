@@ -71,11 +71,11 @@ object NegativeWeight {
     val smertInitial = DenseVector.vertcat(p2, DenseVector.ones[Float](1))
     val conf = SMERT.Config(initialPoint = smertInitial, affineDim = Some(13))
     val (point, (newBleu,bp)) = SMERT.doSmert(input.seq, conf)
-    val res = (point, p1)
+    val res = (point(0 to -2), p1)
     if (newBleu < bleu) 
       res
     else
-      iterate(nbests, (point, p1), newBleu)
+      iterate(nbests, res, newBleu)
   }
   
   def main(args: Array[String]): Unit = {
