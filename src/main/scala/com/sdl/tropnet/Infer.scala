@@ -13,7 +13,8 @@ object Infer extends App {
     nbestsDir: File = new File("."),
     params1: DenseVector[Float] = DenseVector(),
     params2: DenseVector[Float] = DenseVector(),
-    biases: (Float, Float) = (0,0)
+    biases: (Float, Float) = (0,0),
+    hyps: Boolean = false
   )
 
   def parseParams(paramString: String) = DenseVector(paramString.split(",").map(_.toFloat))
@@ -30,6 +31,9 @@ object Infer extends App {
     opt[String]('2', "2nd_weights") required () action { (x, c) =>
       c.copy(params2 = parseParams(x))
     }
+    opt[Boolean]('h', "hyps") required() action { (x, c) => 
+      c.copy(hyps = x)
+    }
   }
 
   val cliConf = parser.parse(args, Config()).getOrElse(sys.exit())
@@ -37,9 +41,8 @@ object Infer extends App {
   
   //println(loadUCamNBest(nbestsDir).size)
   
-  val bleuStats = for{
+  val topScoring = for{
     nbest <-loadUCamNBest(nbestsDir)
-    bs = nbest map (_.bs)
     mat = SMERT.nbestToMatrix(nbest)
   } yield {
     val ones = DenseMatrix.ones[Float](1, mat.cols)
@@ -50,14 +53,20 @@ object Infer extends App {
     sys.exit*/
     val scores1 = (params1.t * withBias).t.map(math.max(_,0))
     val scores2 = (params2.t * withBias).t.map(math.max(_,0))
-    val scores = (scores1 + scores2).toArray zip bs
-    //println(scores.view.zipWithIndex.maxBy(x => x._1._1)._2)
-    val max = scores.maxBy(_._1)
-    val res = if (max._1 == 0.0) bs(0) else max._2
-    println(s"${max._1} $res")
+    val scores = (scores1 + scores2).toArray
+    val (maxScore, maxIndex) = scores.view.zipWithIndex.maxBy(_._1)
+    val res = if (maxScore == 0.0) 
+      (0.0, 0, nbest(0).bs)
+    else 
+      (maxScore, maxIndex, nbest(maxIndex).bs)
+    //println(s"${max._1} $res")
     res
   }
-  val aggregated = bleuStats.reduce(_ + _)
-  println(aggregated.computeBleu())
-  println((for(nbest <-loadUCamNBest(nbestsDir)) yield nbest(0).bs).reduce(_ + _).computeBleu())
+  if(hyps)
+    for(t<-topScoring) println(println(t._2))
+  else {
+    val aggregated = topScoring.map(_._3).reduce(_ + _)
+    println(aggregated.computeBleu())
+    println((for(nbest <-loadUCamNBest(nbestsDir)) yield nbest(0).bs).reduce(_ + _).computeBleu())
+  }
 }
