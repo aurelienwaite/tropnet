@@ -63,7 +63,7 @@ object Infer extends App {
     res
   }
   if(hyps)
-    for(t<-topScoring) println(println(t._2))
+    for(t<-topScoring) println(t._2)
   else {
     val aggregated = topScoring.map(_._3).reduce(_ + _)
     println(aggregated.computeBleu())
