@@ -54,7 +54,7 @@ object Infer extends App {
     //println(scores.view.zipWithIndex.maxBy(x => x._1._1)._2)
     val max = scores.maxBy(_._1)
     val res = if (max._1 == 0.0) bs(0) else max._2
-    //println(s"${max._1} $res")
+    println(s"${max._1} $res")
     res
   }
   val aggregated = bleuStats.reduce(_ + _)

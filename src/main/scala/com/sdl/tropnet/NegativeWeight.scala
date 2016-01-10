@@ -18,7 +18,7 @@ import scala.annotation.tailrec
 object NegativeWeight {
 
   /**
-   * Create the fire vectors. 
+   * Create the fire vectors.
    */
   def fireVectors(projected: DenseMatrix[Float], biases: (Float, Float), bleuStats : IndexedSeq[BleuStats] ) = {
     val fireVecs = ArrayBuffer[DenseVector[Float]]()
@@ -37,7 +37,7 @@ object NegativeWeight {
       fireBS += bleuStats(c)
     }
     fireVecs += DenseVector.zeros[Float](projected.rows)
-    fireBS += bleuStats(0)
+    fireBS += BleuStats.bad
     println(s"${projected.cols} ${fireVecs.size}")
     (DenseMatrix.horzcat(fireVecs.map(_.toDenseMatrix.t):_*), fireBS)
   }
@@ -67,26 +67,31 @@ object NegativeWeight {
       projected = projection * expanded
       (fire, fireBS) = fireVectors(projected, (1.0f, 1.0f), bs)
     } yield (fire, fireBS)
-    
+
     val smertInitial = DenseVector.vertcat(p2, DenseVector.ones[Float](1))
-    val conf = SMERT.Config(initialPoint = smertInitial, affineDim = Some(13))
+    val conf = SMERT.Config(
+      initialPoint = smertInitial,
+      affineDim = Some(13),
+      noOfInitials = 5,
+      noOfRandom = 28
+    )
     val (point, (newBleu,bp)) = SMERT.doSmert(input.seq, conf)
     val res = (point(0 to -2), p1)
-    if (newBleu < bleu) 
+    if (math.abs(newBleu - bleu) < conf.deltaBleu)
       res
     else
       iterate(nbests, res, newBleu)
   }
-  
+
   def main(args: Array[String]): Unit = {
-   
+
     val sparkConf = new SparkConf().setAppName("Negative Weight")
     sparkConf.setMaster("local[8]")
     implicit val sc = new SparkContext(sparkConf)
 
    val nbests = loadUCamNBest(new File(args(0)))
        val MAGIC_BIAS = 250.0
-   val firstUnit = DenseVector(MAGIC_BIAS,1.000000,0.820073,1.048347,0.798443,0.349793,0.286489,15.352371,-5.753633,-3.766533,0.052922,0.624889,-0.015877).map(_.toFloat) 
+   val firstUnit = DenseVector(MAGIC_BIAS,1.000000,0.820073,1.048347,0.798443,0.349793,0.286489,15.352371,-5.753633,-3.766533,0.052922,0.624889,-0.015877).map(_.toFloat)
    val secondUnit = DenseVector(0,1.000000,0.820073,1.048347,0.798443,0.349793,0.286489,15.352371,-5.753633,-3.766533,0.052922,0.624889,-0.015877).map(_.toFloat)
    val nn = iterate(nbests, (firstUnit, secondUnit), 0)
    println(nn)
