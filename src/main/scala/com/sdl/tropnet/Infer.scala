@@ -31,8 +31,8 @@ object Infer extends App {
     opt[String]('2', "2nd_weights") required () action { (x, c) =>
       c.copy(params2 = parseParams(x))
     }
-    opt[Boolean]('h', "hyps") required() action { (x, c) => 
-      c.copy(hyps = x)
+    opt[Unit]('h', "hyps") required() action { (_, c) => 
+      c.copy(hyps = true)
     }
   }
 
