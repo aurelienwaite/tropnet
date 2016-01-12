@@ -86,13 +86,15 @@ object NegativeWeight {
     (res, (newBleu,bp))
   }
   
-  def isolateNeurons[T](prev: Seq[T], next: Seq[T]): Seq[(T, Seq[T])] = {
-    val head :: tail = next
-    (head, prev ++ next) +: isolateNeurons(prev :+ head, next)
-  }
+  def isolateNeurons[T](prev: List[T], next: List[T]): List[(T, List[T])] = 
+    next match {
+      case head :: Nil => List((head, prev))
+      case head :: tail => (head, prev ++ tail) +: isolateNeurons(prev :+ head, next)
+    }
+     
   
   @tailrec
-  def iterate(nbests: Seq[NBest], params: Seq[DenseVector[Float]], bleu: Double)(implicit sc: SparkContext) 
+  def iterate(nbests: Seq[NBest], params: List[DenseVector[Float]], bleu: Double)(implicit sc: SparkContext) 
     : Seq[DenseVector[Float]] = {
     val isolated = isolateNeurons(Nil, params)
     val optimised = for((p, other) <- isolated) yield {
@@ -104,7 +106,7 @@ object NegativeWeight {
       params
     else {      
       printNeurons(res)
-      iterate(nbests, res, newBleu)
+      iterate(nbests, res.toList, newBleu)
     }
   }
 
