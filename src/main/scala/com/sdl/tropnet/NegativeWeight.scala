@@ -108,7 +108,7 @@ object NegativeWeight {
    val initialisedUnit = DenseVector(0,1.000000,0.820073,1.048347,0.798443,0.349793,0.286489,15.352371,-5.753633,-3.766533,0.052922,0.624889,-0.015877).map(_.toFloat)    
    val magicUnit = DenseVector(MAGIC_BIAS,1.000000,0.820073,1.048347,0.798443,0.349793,0.286489,15.352371,-5.753633,-3.766533,0.052922,0.624889,-0.015877).map(_.toFloat)
    
-   val neurons = initialisedUnit :: List.fill(NO_OF_UNITS - 1)(magicUnit)
+   val neurons =  List.fill(NO_OF_UNITS - 1)(initialisedUnit) :+ magicUnit
    
    val nn = iterate(nbests, neurons, 0)
    printNeurons(nn)
