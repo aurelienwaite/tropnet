@@ -89,7 +89,7 @@ object NegativeWeight {
   def isolateNeurons[T](prev: List[T], next: List[T]): List[(T, List[T])] = 
     next match {
       case Nil => Nil  
-      case head :: tail => (head, prev ++ tail) +: isolateNeurons(prev :+ head, next)
+      case head :: tail => (head, prev ++ tail) +: isolateNeurons(prev :+ head, tail)
     }
      
   
