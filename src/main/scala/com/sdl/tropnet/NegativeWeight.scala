@@ -86,7 +86,7 @@ object NegativeWeight {
     )
     val (point, (newBleu,bp)) = SMERT.doSmert(input.seq, conf)
     val res = tail :+ point(0 to -2)
-    if (bleu - newBleu < conf.deltaBleu)
+    if (newBleu - bleu < conf.deltaBleu)
       params
     else {      
       printNeurons(res)
