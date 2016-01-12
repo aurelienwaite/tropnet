@@ -42,33 +42,36 @@ object NegativeWeight {
     (DenseMatrix.horzcat(fireVecs.map(_.toDenseMatrix.t):_*), fireBS)
   }
   
-  def expandMatrix(in : DenseMatrix[Float]) = DenseMatrix.vertcat(DenseMatrix.ones[Float](1, in.cols), in, DenseMatrix.ones[Float](1, in.cols), in )
+  def expandMatrix(in : DenseMatrix[Float], size: Int) = {
+    val withBias =  DenseMatrix.vertcat(DenseMatrix.ones[Float](1, in.cols), in)
+    DenseMatrix.vertcat(Seq.fill(size)(withBias):_*)
+  }
   
-  def createProjection(params : DenseVector[Float]) = {
-    val eye = DenseMatrix.eye[Float](13)
-    val zeros = DenseMatrix.zeros[Float](13, 13)
+  def createProjection(params : Seq[DenseVector[Float]]) = {
+    val eye = DenseMatrix.eye[Float](13) 
+    val zeros = DenseMatrix.zeros[Float](13 * params.size, 13)
     val dirs = DenseMatrix.horzcat(zeros, eye) 
     val initials = DenseMatrix.horzcat(
-          params.toDenseMatrix,
-          DenseMatrix.zeros[Float](1, 13))
+          params.map(_.toDenseMatrix) :+ 
+          DenseMatrix.zeros[Float](1, 13) :_*)
     DenseMatrix.vertcat(dirs,initials)     
   }
   
   @tailrec
-  def iterate(nbests: Seq[NBest], params: (DenseVector[Float], DenseVector[Float]), bleu: Double)(implicit sc: SparkContext) 
-    : (DenseVector[Float], DenseVector[Float]) = {
-    val (p1, p2) = params
-    val projection = createProjection(p1)
+  def iterate(nbests: Seq[NBest], params: Seq[DenseVector[Float]], bleu: Double)(implicit sc: SparkContext) 
+    : Seq[DenseVector[Float]] = {
+    val p1 :: tail = params
+    val projection = createProjection(tail)
     val input = for {
       nbest <- nbests
       bs = nbest map (_.bs)
       mat = SMERT.nbestToMatrix(nbest)
-      expanded = expandMatrix(mat) 
+      expanded = expandMatrix(mat, tail.size) 
       projected = projection * expanded
       (fire, fireBS) = fireVectors(projected, (1.0f, 1.0f), bs)
     } yield (fire, fireBS)
 
-    val smertInitial = DenseVector.vertcat(p2, DenseVector.ones[Float](1))
+    val smertInitial = DenseVector.vertcat(p1, DenseVector.ones[Float](1))
     val conf = SMERT.Config(
       initialPoint = smertInitial,
       affineDim = Some(13),
@@ -76,7 +79,7 @@ object NegativeWeight {
       noOfRandom = 28
     )
     val (point, (newBleu,bp)) = SMERT.doSmert(input.seq, conf)
-    val res = (point(0 to -2), p1)
+    val res = tail :+ point(0 to -2)
     if (math.abs(newBleu - bleu) < conf.deltaBleu)
       res
     else
@@ -85,15 +88,21 @@ object NegativeWeight {
 
   def main(args: Array[String]): Unit = {
 
+    val NO_OF_UNITS = 3
+    
     val sparkConf = new SparkConf().setAppName("Negative Weight")
     sparkConf.setMaster("local[8]")
     implicit val sc = new SparkContext(sparkConf)
 
    val nbests = loadUCamNBest(new File(args(0)))
        val MAGIC_BIAS = 250.0
-   val firstUnit = DenseVector(MAGIC_BIAS,1.000000,0.820073,1.048347,0.798443,0.349793,0.286489,15.352371,-5.753633,-3.766533,0.052922,0.624889,-0.015877).map(_.toFloat)
-   val secondUnit = DenseVector(0,1.000000,0.820073,1.048347,0.798443,0.349793,0.286489,15.352371,-5.753633,-3.766533,0.052922,0.624889,-0.015877).map(_.toFloat)
-   val nn = iterate(nbests, (firstUnit, secondUnit), 0)
+   
+   val initialisedUnit = DenseVector(0,1.000000,0.820073,1.048347,0.798443,0.349793,0.286489,15.352371,-5.753633,-3.766533,0.052922,0.624889,-0.015877).map(_.toFloat)    
+   val magicUnit = DenseVector(MAGIC_BIAS,1.000000,0.820073,1.048347,0.798443,0.349793,0.286489,15.352371,-5.753633,-3.766533,0.052922,0.624889,-0.015877).map(_.toFloat)
+   
+   val neurons = initialisedUnit :: List.fill(NO_OF_UNITS - 1)(magicUnit)
+   
+   val nn = iterate(nbests, neurons, 0)
    println(nn)
   }
 
