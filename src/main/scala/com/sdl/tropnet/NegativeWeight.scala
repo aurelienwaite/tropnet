@@ -57,6 +57,12 @@ object NegativeWeight {
     DenseMatrix.vertcat(dirs,initials)     
   }
   
+  def printNeurons(neurons : Seq[DenseVector[Float]]) = {
+    for((neuron, i) <- neurons.view.zipWithIndex) {
+      println(s"Neuron $i  " + neuron.toArray.map(formatter.format(_)).mkString(","))
+    }
+  }
+  
   @tailrec
   def iterate(nbests: Seq[NBest], params: Seq[DenseVector[Float]], bleu: Double)(implicit sc: SparkContext) 
     : Seq[DenseVector[Float]] = {
@@ -75,15 +81,17 @@ object NegativeWeight {
     val conf = SMERT.Config(
       initialPoint = smertInitial,
       affineDim = Some(13),
-      noOfInitials = 5,
+      noOfInitials = 0,
       noOfRandom = 28
     )
     val (point, (newBleu,bp)) = SMERT.doSmert(input.seq, conf)
     val res = tail :+ point(0 to -2)
-    if (math.abs(newBleu - bleu) < conf.deltaBleu)
-      res
-    else
+    if (bleu - newBleu < conf.deltaBleu)
+      params
+    else {      
+      printNeurons(res)
       iterate(nbests, res, newBleu)
+    }
   }
 
   def main(args: Array[String]): Unit = {
@@ -103,7 +111,7 @@ object NegativeWeight {
    val neurons = initialisedUnit :: List.fill(NO_OF_UNITS - 1)(magicUnit)
    
    val nn = iterate(nbests, neurons, 0)
-   println(nn)
+   printNeurons(nn)
   }
 
 }
