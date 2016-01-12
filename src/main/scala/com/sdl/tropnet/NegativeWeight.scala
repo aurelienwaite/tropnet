@@ -49,7 +49,7 @@ object NegativeWeight {
   
   def createProjection(params : Seq[DenseVector[Float]]) = {
     val eye = DenseMatrix.eye[Float](13) 
-    val zeros = DenseMatrix.zeros[Float](13 * params.size, 13)
+    val zeros = DenseMatrix.zeros[Float](13, 13 * params.size)
     val dirs = DenseMatrix.horzcat(zeros, eye) 
     val initials = DenseMatrix.horzcat(
           params.map(_.toDenseMatrix) :+ 
