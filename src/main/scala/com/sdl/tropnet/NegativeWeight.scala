@@ -63,21 +63,18 @@ object NegativeWeight {
     }
   }
   
-  @tailrec
-  def iterate(nbests: Seq[NBest], params: Seq[DenseVector[Float]], bleu: Double)(implicit sc: SparkContext) 
-    : Seq[DenseVector[Float]] = {
-    val p1 :: tail = params
-    val projection = createProjection(tail)
+  def optimiseNeuron(nbests: Seq[NBest], paramVec: DenseVector[Float],
+      other: Seq[DenseVector[Float]])(implicit sc: SparkContext) = {
+    val projection = createProjection(other)
     val input = for {
       nbest <- nbests
       bs = nbest map (_.bs)
       mat = SMERT.nbestToMatrix(nbest)
-      expanded = expandMatrix(mat, tail.size + 1) 
+      expanded = expandMatrix(mat, other.size + 1) 
       projected = projection * expanded
       (fire, fireBS) = fireVectors(projected, (1.0f, 1.0f), bs)
     } yield (fire, fireBS)
-
-    val smertInitial = DenseVector.vertcat(p1, DenseVector.ones[Float](1))
+    val smertInitial = DenseVector.vertcat(paramVec, DenseVector.ones[Float](1))
     val conf = SMERT.Config(
       initialPoint = smertInitial,
       affineDim = Some(13),
@@ -85,8 +82,25 @@ object NegativeWeight {
       noOfRandom = 28
     )
     val (point, (newBleu,bp)) = SMERT.doSmert(input.seq, conf)
-    val res = tail :+ point(0 to -2)
-    if (newBleu - bleu < conf.deltaBleu)
+    val res = point(0 to -2) +: other
+    (res, (newBleu,bp))
+  }
+  
+  def isolateNeurons[T](prev: Seq[T], next: Seq[T]): Seq[(T, Seq[T])] = {
+    val head :: tail = next
+    (head, prev ++ next) +: isolateNeurons(prev :+ head, next)
+  }
+  
+  @tailrec
+  def iterate(nbests: Seq[NBest], params: Seq[DenseVector[Float]], bleu: Double)(implicit sc: SparkContext) 
+    : Seq[DenseVector[Float]] = {
+    val isolated = isolateNeurons(Nil, params)
+    val optimised = for((p, other) <- isolated) yield {
+      printNeurons(p +: other)
+      optimiseNeuron(nbests, p, other)
+    }
+    val (res, (newBleu,bp)) = optimised.maxBy(_._2._1)
+    if (newBleu - bleu < SMERT.Config().deltaBleu)
       params
     else {      
       printNeurons(res)
