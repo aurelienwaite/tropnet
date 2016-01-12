@@ -20,18 +20,22 @@ object NegativeWeight {
   /**
    * Create the fire vectors.
    */
-  def fireVectors(projected: DenseMatrix[Float], biases: (Float, Float), bleuStats : IndexedSeq[BleuStats] ) = {
+  def fireVectors(in: DenseMatrix[Float], params: Seq[DenseVector[Float]], bleuStats : IndexedSeq[BleuStats] ) = {
     val fireVecs = ArrayBuffer[DenseVector[Float]]()
     val fireBS = ArrayBuffer[BleuStats]()
+    val ones = DenseMatrix.ones[Float](1, in.cols)
+    val withBias = DenseMatrix.vertcat(ones, in)
+    val activations = (for (p <- params) yield (p.t * withBias).t.map(math.max(_,0))).reduce(_+_)
+    val projected = DenseMatrix.vertcat(withBias, activations.toDenseMatrix)
     for(c <- 0 until projected.cols) {
-      val initial = math.max(projected(-1, c),0f) * biases._1
+      val initial = projected(-1, c)
       if (initial != 0f){
         val fireVec = DenseVector.zeros[Float](projected.rows)
         fireVec(-1) = initial
         fireVecs += fireVec
         fireBS += bleuStats(c)
       }
-      val row = projected(::, c).map(_*  biases._2)
+      val row = projected(::, c)
       row(-1) = initial
       fireVecs += row
       fireBS += bleuStats(c)
@@ -42,7 +46,7 @@ object NegativeWeight {
     (DenseMatrix.horzcat(fireVecs.map(_.toDenseMatrix.t):_*), fireBS)
   }
   
-  def expandMatrix(in : DenseMatrix[Float], size: Int) = {
+  /*def expandMatrix(in : DenseMatrix[Float], size: Int) = {
     val withBias =  DenseMatrix.vertcat(DenseMatrix.ones[Float](1, in.cols), in)
     DenseMatrix.vertcat(Seq.fill(size)(withBias):_*)
   }
@@ -55,7 +59,7 @@ object NegativeWeight {
           params.map(_.toDenseMatrix) :+ 
           DenseMatrix.zeros[Float](1, 13) :_*)
     DenseMatrix.vertcat(dirs,initials)     
-  }
+  }*/
   
   def printNeurons(neurons : Seq[DenseVector[Float]]) = {
     for((neuron, i) <- neurons.view.zipWithIndex) {
@@ -65,14 +69,11 @@ object NegativeWeight {
   
   def optimiseNeuron(nbests: Seq[NBest], paramVec: DenseVector[Float],
       other: Seq[DenseVector[Float]])(implicit sc: SparkContext) = {
-    val projection = createProjection(other)
     val input = for {
       nbest <- nbests
       bs = nbest map (_.bs)
       mat = SMERT.nbestToMatrix(nbest)
-      expanded = expandMatrix(mat, other.size + 1) 
-      projected = projection * expanded
-      (fire, fireBS) = fireVectors(projected, (1.0f, 1.0f), bs)
+      (fire, fireBS) = fireVectors(mat, other, bs)
     } yield (fire, fireBS)
     val smertInitial = DenseVector.vertcat(paramVec, DenseVector.ones[Float](1))
     val conf = SMERT.Config(
