@@ -14,6 +14,7 @@ import org.apache.spark.SparkContext
 import scala.collection.mutable.ArrayBuffer
 import com.sdl.BleuStats
 import scala.annotation.tailrec
+import org.apache.commons.math3.random.RandomGenerator
 
 object NegativeWeight {
 
@@ -68,7 +69,7 @@ object NegativeWeight {
   }
   
   def optimiseNeuron(nbests: Seq[NBest], paramVec: DenseVector[Float],
-      other: Seq[DenseVector[Float]])(implicit sc: SparkContext) = {
+      other: Seq[DenseVector[Float]], r: RandomGenerator)(implicit sc: SparkContext) = {
     val input = for {
       nbest <- nbests
       bs = nbest map (_.bs)
@@ -80,7 +81,8 @@ object NegativeWeight {
       initialPoint = smertInitial,
       affineDim = Some(13),
       noOfInitials = 0,
-      noOfRandom = 28
+      noOfRandom = 28,
+      random = r
     )
     val (point, (newBleu,bp)) = SMERT.doSmert(input.seq, conf)
     val res = point(0 to -2) +: other
@@ -95,19 +97,19 @@ object NegativeWeight {
      
   
   @tailrec
-  def iterate(nbests: Seq[NBest], params: List[DenseVector[Float]], bleu: Double)(implicit sc: SparkContext) 
+  def iterate(nbests: Seq[NBest], params: List[DenseVector[Float]], bleu: Double, r : RandomGenerator)(implicit sc: SparkContext) 
     : Seq[DenseVector[Float]] = {
     val isolated = isolateNeurons(Nil, params)
     val optimised = for((p, other) <- isolated) yield {
       printNeurons(p +: other)
-      optimiseNeuron(nbests, p, other)
+      optimiseNeuron(nbests, p, other, r)
     }
     val (res, (newBleu,bp)) = optimised.maxBy(_._2._1)
     if (newBleu - bleu < SMERT.Config().deltaBleu)
       params
     else {      
       printNeurons(res)
-      iterate(nbests, res.toList, newBleu)
+      iterate(nbests, res.toList, newBleu, r)
     }
   }
 
@@ -128,7 +130,7 @@ object NegativeWeight {
    val flat = DenseVector.ones[Float](13)
    val neurons =  List.fill(NO_OF_UNITS)(flat)
    
-   val nn = iterate(nbests, neurons, 0)
+   val nn = iterate(nbests, neurons, 0, SMERT.getGenerator(11))
    printNeurons(nn)
   }
 
