@@ -21,16 +21,16 @@ object NegativeWeight {
   /**
    * Create the fire vectors.
    */
-  def fireVectors(in: DenseMatrix[Float], params: Seq[DenseVector[Float]], bleuStats : IndexedSeq[BleuStats] ) = {
+  def fireVectors(in: DenseMatrix[Float], params: Seq[DenseVector[Float]], bleuStats: IndexedSeq[BleuStats]) = {
     val fireVecs = ArrayBuffer[DenseVector[Float]]()
     val fireBS = ArrayBuffer[BleuStats]()
     val ones = DenseMatrix.ones[Float](1, in.cols)
     val withBias = DenseMatrix.vertcat(ones, in)
-    val activations = (for (p <- params) yield (p.t * withBias).t.map(math.max(_,0))).reduce(_+_)
+    val activations = (for (p <- params) yield (p.t * withBias).t.map(math.max(_, 0))).reduce(_ + _)
     val projected = DenseMatrix.vertcat(withBias, activations.toDenseMatrix)
-    for(c <- 0 until projected.cols) {
+    for (c <- 0 until projected.cols) {
       val initial = projected(-1, c)
-      if (initial != 0f){
+      if (initial != 0f) {
         val fireVec = DenseVector.zeros[Float](projected.rows)
         fireVec(-1) = initial
         fireVecs += fireVec
@@ -43,10 +43,10 @@ object NegativeWeight {
     }
     fireVecs += DenseVector.zeros[Float](projected.rows)
     fireBS += BleuStats.bad
-    println(s"${projected.cols} ${fireVecs.size}")
-    (DenseMatrix.horzcat(fireVecs.map(_.toDenseMatrix.t):_*), fireBS)
+    //println(s"${projected.cols} ${fireVecs.size}")
+    (DenseMatrix.horzcat(fireVecs.map(_.toDenseMatrix.t): _*), fireBS)
   }
-  
+
   /*def expandMatrix(in : DenseMatrix[Float], size: Int) = {
     val withBias =  DenseMatrix.vertcat(DenseMatrix.ones[Float](1, in.cols), in)
     DenseMatrix.vertcat(Seq.fill(size)(withBias):_*)
@@ -61,15 +61,15 @@ object NegativeWeight {
           DenseMatrix.zeros[Float](1, 13) :_*)
     DenseMatrix.vertcat(dirs,initials)     
   }*/
-  
-  def printNeurons(neurons : Seq[DenseVector[Float]]) = {
-    for((neuron, i) <- neurons.view.zipWithIndex) {
+
+  def printNeurons(neurons: Seq[DenseVector[Float]]) = {
+    for ((neuron, i) <- neurons.view.zipWithIndex) {
       println(s"Neuron $i  " + neuron.toArray.map(formatter.format(_)).mkString(","))
     }
   }
-  
+
   def optimiseNeuron(nbests: Seq[NBest], paramVec: DenseVector[Float],
-      other: Seq[DenseVector[Float]], r: RandomGenerator)(implicit sc: SparkContext) = {
+                     other: Seq[DenseVector[Float]], r: RandomGenerator)(implicit sc: SparkContext) = {
     val input = for {
       nbest <- nbests
       bs = nbest map (_.bs)
@@ -80,34 +80,31 @@ object NegativeWeight {
     val conf = SMERT.Config(
       initialPoint = smertInitial,
       affineDim = Some(13),
-      noOfInitials = 0,
+      noOfInitials = 5,
       noOfRandom = 28,
-      random = r
-    )
-    val (point, (newBleu,bp)) = SMERT.doSmert(input.seq, conf)
+      random = r)
+    val (point, (newBleu, bp)) = SMERT.doSmert(input.seq, conf)
     val res = point(0 to -2) +: other
-    (res, (newBleu,bp))
+    (res, (newBleu, bp))
   }
-  
-  def isolateNeurons[T](prev: List[T], next: List[T]): List[(T, List[T])] = 
+
+  def isolateNeurons[T](prev: List[T], next: List[T]): List[(T, List[T])] =
     next match {
-      case Nil => Nil  
+      case Nil          => Nil
       case head :: tail => (head, prev ++ tail) +: isolateNeurons(prev :+ head, tail)
     }
-     
-  
+
   @tailrec
-  def iterate(nbests: Seq[NBest], params: List[DenseVector[Float]], bleu: Double, r : RandomGenerator)(implicit sc: SparkContext) 
-    : Seq[DenseVector[Float]] = {
+  def iterate(nbests: Seq[NBest], params: List[DenseVector[Float]], bleu: Double, r: RandomGenerator)(implicit sc: SparkContext): Seq[DenseVector[Float]] = {
     val isolated = isolateNeurons(Nil, params)
-    val optimised = for((p, other) <- isolated) yield {
+    val optimised = for ((p, other) <- isolated.drop(1)) yield {
       printNeurons(p +: other)
       optimiseNeuron(nbests, p, other, r)
     }
-    val (res, (newBleu,bp)) = optimised.maxBy(_._2._1)
+    val (res, (newBleu, bp)) = optimised.maxBy(_._2._1)
     if (newBleu - bleu < SMERT.Config().deltaBleu)
       params
-    else {      
+    else {
       printNeurons(res)
       iterate(nbests, res.toList, newBleu, r)
     }
@@ -116,22 +113,22 @@ object NegativeWeight {
   def main(args: Array[String]): Unit = {
 
     val NO_OF_UNITS = args(1).toInt
-    
+
     val sparkConf = new SparkConf().setAppName("Negative Weight")
     sparkConf.setMaster("local[8]")
     implicit val sc = new SparkContext(sparkConf)
 
-   val nbests = loadUCamNBest(new File(args(0)))
-       val MAGIC_BIAS = 250.0
-   
-   val initialisedUnit = DenseVector(0,1.000000,0.820073,1.048347,0.798443,0.349793,0.286489,15.352371,-5.753633,-3.766533,0.052922,0.624889,-0.015877).map(_.toFloat)    
-   val magicUnit = DenseVector(MAGIC_BIAS,1.000000,0.820073,1.048347,0.798443,0.349793,0.286489,15.352371,-5.753633,-3.766533,0.052922,0.624889,-0.015877).map(_.toFloat)
-   
-   val flat = DenseVector.ones[Float](13)
-   val neurons =  List.fill(NO_OF_UNITS)(flat)
-   
-   val nn = iterate(nbests, neurons, 0, SMERT.getGenerator(11))
-   printNeurons(nn)
+    val nbests = loadUCamNBest(new File(args(0)))
+    val MAGIC_BIAS = 250.0
+
+    val initialisedUnit = DenseVector(0, 1.000000, 0.820073, 1.048347, 0.798443, 0.349793, 0.286489, 15.352371, -5.753633, -3.766533, 0.052922, 0.624889, -0.015877).map(_.toFloat)
+    val magicUnit = DenseVector(MAGIC_BIAS, 1.000000, 0.820073, 1.048347, 0.798443, 0.349793, 0.286489, 15.352371, -5.753633, -3.766533, 0.052922, 0.624889, -0.015877).map(_.toFloat)
+
+    val flat = DenseVector.ones[Float](13)
+    val neurons = List.fill(NO_OF_UNITS)(flat)
+
+    val nn = iterate(nbests, neurons, 0, SMERT.getGenerator(11))
+    printNeurons(nn)
   }
 
 }

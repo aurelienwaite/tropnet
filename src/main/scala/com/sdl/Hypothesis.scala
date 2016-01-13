@@ -1,7 +1,5 @@
 package com.sdl
 
-import com.sdl.BleuStats
-
 case class Hypothesis(hyp : String, fVec : IndexedSeq[Double], bs : BleuStats, sbleu : Double){
 
   def withFVec(v : IndexedSeq[Double]) = Hypothesis(hyp, v, bs, sbleu)
