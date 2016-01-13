@@ -113,7 +113,7 @@ object NegativeWeight {
 
   def main(args: Array[String]): Unit = {
 
-    val NO_OF_UNITS = 3
+    val NO_OF_UNITS = args(1).toInt
     
     val sparkConf = new SparkConf().setAppName("Negative Weight")
     sparkConf.setMaster("local[8]")
