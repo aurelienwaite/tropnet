@@ -11,9 +11,7 @@ object Infer extends App {
 
   case class Config(
     nbestsDir: File = new File("."),
-    params1: DenseVector[Float] = DenseVector(),
-    params2: DenseVector[Float] = DenseVector(),
-    biases: (Float, Float) = (0,0),
+    params: Seq[DenseVector[Float]] = Nil,
     hyps: Boolean = false
   )
 
@@ -25,11 +23,8 @@ object Infer extends App {
     opt[File]('n', "nbest_dir") required () action { (x, c) =>
       c.copy(nbestsDir = x)
     }
-    opt[String]('1', "1st_weights") required () action { (x, c) =>
-      c.copy(params1 = parseParams(x))
-    }
-    opt[String]('2', "2nd_weights") required () action { (x, c) =>
-      c.copy(params2 = parseParams(x))
+    arg[String]("parameter vectors...") unbounded() required () action { (x, c) =>
+      c.copy(params = c.params :+ parseParams(x))
     }
     opt[Unit]('h', "hyps") action { (_, c) => 
       c.copy(hyps = true)
@@ -51,9 +46,8 @@ object Infer extends App {
       println(s)
     }
     sys.exit*/
-    val scores1 = (params1.t * withBias).t.map(math.max(_,0))
-    val scores2 = (params2.t * withBias).t.map(math.max(_,0))
-    val scores = (scores1 + scores2).toArray
+    val activated = for (p <- params) yield (p.t * withBias).t.map(math.max(_,0))
+    val scores = activated.reduce(_+_).toArray
     val (maxScore, maxIndex) = scores.view.zipWithIndex.maxBy(_._1)
     val res = if (maxScore == 0.0) 
       (0.0, 0, nbest(0).bs)
