@@ -15,7 +15,8 @@ object Infer extends App {
     hyps: Boolean = false
   )
 
-  def parseParams(paramString: String) = DenseVector(paramString.split(",").map(_.toFloat))
+  def parseParams(paramString: String) = DenseVector(paramString.
+      replace("unit:", "").split(",").map(_.toFloat))
 
   val parser = new scopt.OptionParser[Config]("smert") {
     head("smert", "1.0")
