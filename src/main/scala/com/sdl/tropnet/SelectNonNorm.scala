@@ -19,6 +19,6 @@ object SelectNonNorm extends App{
 
   for ((i, nbestFile) <- selection zip files; s <- managed(Source.fromFile(nbestFile))) {
     val hyps = s.getLines.toIndexedSeq
-    println(hyps(i/3))
+    println(hyps(i))
   }
 }
