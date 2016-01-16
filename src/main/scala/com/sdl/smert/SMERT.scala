@@ -138,7 +138,10 @@ object SMERT {
               indices: RDD[Int], deltaBleu: Double, r: RandBasis, noOfRandom: Int, affineDim : Option[Int]): (DenseVector[Float], (Double, Double)) = {
     val directions = generateDirections(r, prevPoint.length, noOfRandom, affineDim)
     val (point, (bleu, bp)) = iteration(nbests, indices, prevPoint, directions)
-    val (verifiedBleu, verifiedBP) = computeScore(nbests.value, point.t).computeBleu()
+    val (verifiedBleu, verifiedBP) = if(false)
+      computeScore(nbests.value, point.t).computeBleu()
+    else
+      (0.0, 0.0)
     println(point)
     println(f"BLEU: $bleu%.6f [$bp%.4f], verified: $verifiedBleu%.6f [$verifiedBP%.4f]")
     if ((bleu - prevBleu._1) < deltaBleu)

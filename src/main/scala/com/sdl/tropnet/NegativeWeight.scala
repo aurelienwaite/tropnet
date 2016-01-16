@@ -80,8 +80,8 @@ object NegativeWeight {
     val conf = SMERT.Config(
       initialPoint = smertInitial,
       affineDim = Some(13),
-      noOfInitials = 5,
-      noOfRandom = 28,
+      noOfInitials = 10,
+      noOfRandom = 39,
       random = r)
     val (point, (newBleu, bp)) = SMERT.doSmert(input.seq, conf)
     val res = point(0 to -2) +: other
@@ -105,7 +105,7 @@ object NegativeWeight {
     //if (newBleu - bleu < SMERT.Config().deltaBleu)
     //  params
     //else {
-    println(s"Caetano iteration done: SnewBleu")
+    println(s"Caetano iteration done: $newBleu")
     printNeurons(res)
     iterate(nbests, res.toList, newBleu, r)
     //}
@@ -126,7 +126,7 @@ object NegativeWeight {
     val magicUnit = DenseVector(MAGIC_BIAS, 1.000000, 0.820073, 1.048347, 0.798443, 0.349793, 0.286489, 15.352371, -5.753633, -3.766533, 0.052922, 0.624889, -0.015877).map(_.toFloat)
 
     val flat = DenseVector.ones[Float](13)
-    val neurons = List.fill(NO_OF_UNITS)(initialisedUnit)
+    val neurons = List.fill(NO_OF_UNITS)(flat)
 
     val nn = iterate(nbests, neurons, 0, SMERT.getGenerator(11))
     printNeurons(nn)
