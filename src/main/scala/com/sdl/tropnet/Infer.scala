@@ -12,7 +12,8 @@ object Infer extends App {
   case class Config(
     nbestsDir: File = new File("."),
     params: Seq[DenseVector[Float]] = Nil,
-    hyps: Boolean = false
+    hyps: Boolean = false,
+    stats: Boolean = false
   )
 
   def parseParams(paramString: String) = DenseVector(paramString.
@@ -29,6 +30,9 @@ object Infer extends App {
     }
     opt[Unit]('h', "hyps") action { (_, c) => 
       c.copy(hyps = true)
+    }
+    opt[Unit]('s', "stats") action { (_, c) => 
+      c.copy(stats = true)
     }
   }
 
@@ -48,18 +52,23 @@ object Infer extends App {
     }
     sys.exit*/
     val activated = for (p <- params) yield (p.t * withBias).t.map(math.max(_,0))
-    val scores = activated.reduce(_+_).toArray
+    val scores = activated.reduce(_ + _).toArray
     val (maxScore, maxIndex) = scores.view.zipWithIndex.maxBy(_._1)
+    val activatedStats = activated.map(a => if(a(maxIndex) ==0.0) 0 else 1)
     val res = if (maxScore == 0.0) 
-      (0.0, 0, nbest(0).bs)
+      (0.0, 0, nbest(0).bs, activatedStats)
     else 
-      (maxScore, maxIndex, nbest(maxIndex).bs)
-    //println(s"${max._1} $res")
+      (maxScore, maxIndex, nbest(maxIndex).bs,activatedStats)
     res
   }
   if(hyps)
     for(t<-topScoring) println(t._2)
-  else {
+  else if(stats){
+    val activatedStats = topScoring.map(_._4).reduce{(a,b) =>
+      for((aActivated,bActivated) <- a zip b) yield aActivated + bActivated
+    }
+    for((count, i) <- activatedStats.view.zipWithIndex) println(s"Activations for unit $i: $count")
+  }else {
     val aggregated = topScoring.map(_._3).reduce(_ + _)
     println(aggregated.computeBleu())
     println((for(nbest <-loadUCamNBest(nbestsDir)) yield nbest(0).bs).reduce(_ + _).computeBleu())

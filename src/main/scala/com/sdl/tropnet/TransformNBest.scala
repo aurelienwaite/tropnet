@@ -13,7 +13,7 @@ object TransformNBest extends App{
   def transformHyp(hyp : Hypothesis, index : Int)={
     val fVec = hyp.fVec
     val transformedFVec = (for((fea, i) <- fVec.view.zipWithIndex) yield {
-      val negated = if (fea == "0") fea else formatter.format(fea.toDouble * -1)
+      val negated = if (fea == 0) fea else formatter.format(fea.toDouble * -1)
       f"tropnet$i%d:::TrainingData $negated"
     }).mkString(" ")
     val bs = hyp.bs
