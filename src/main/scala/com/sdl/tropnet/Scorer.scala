@@ -42,7 +42,7 @@ object Scorer extends App{
   val reduced = bleuStats.reduce( (t1, t2) => (t1._1 + t2._1, t1._2 + t2._2))
 
   for (out <- hypOut) out.close
-  println("One Best " + bleuToString(reduced._1.computeBleu))
-  println("Oracle " + bleuToString(reduced._2.computeBleu))
+  println("One Best " + bleuToString(reduced._1.computeBleu()))
+  println("Oracle " + bleuToString(reduced._2.computeBleu()))
 
 }

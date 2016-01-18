@@ -34,7 +34,7 @@ object NegativeWeight {
         val fireVec = DenseVector.zeros[Float](projected.rows)
         fireVec(-1) = initial
         fireVecs += fireVec
-        fireBS += bleuStats(c)
+        fireBS += bleuStats(c).deleteActivations()
       }
       val row = projected(::, c)
       row(-1) = initial
@@ -126,7 +126,7 @@ object NegativeWeight {
     val magicUnit = DenseVector(MAGIC_BIAS, 1.000000, 0.820073, 1.048347, 0.798443, 0.349793, 0.286489, 15.352371, -5.753633, -3.766533, 0.052922, 0.624889, -0.015877).map(_.toFloat)
 
     val flat = DenseVector.ones[Float](13)
-    val neurons = List.fill(NO_OF_UNITS)(flat)
+    val neurons = List.fill(NO_OF_UNITS)(initialisedUnit)
 
     val nn = iterate(nbests, neurons, 0, SMERT.getGenerator(11))
     printNeurons(nn)

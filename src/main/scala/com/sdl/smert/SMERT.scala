@@ -48,7 +48,8 @@ object SMERT {
     noOfInitials: Int = 50,
     noOfRandom: Int = 100,
     out: File = new File("./params"),
-    affineDim: Option[Int] = None)
+    affineDim: Option[Int] = None,
+    verify: Boolean = false)
 
   def doSvd(): Unit = {
     /*    val trainingSet : RDD[org.apache.spark.mllib.linalg.Vector] = for(nbest <- nbests; hyp <- nbest) yield{
@@ -87,18 +88,6 @@ object SMERT {
     new DenseMatrix(fVecDim, in.size, buf.toArray)
   }
 
-  @tailrec
-  def applyError(prevErr: BleuStats, intervals: Seq[(Float, _, BleuStats)], accum: Buffer[(Float, (Double, Double), BleuStats)]): Unit = {
-    intervals match {
-      case Nil => Unit
-      case head +: tail => {
-        val err = if (head._1 != Float.NegativeInfinity) prevErr + head._3 else prevErr
-        val res = (head._1, err.computeBleu(), err)
-        accum += res
-        applyError(err, tail, accum)
-      }
-    }
-  }
 
   def iteration(nbests: Broadcast[Seq[Tuple2[DenseMatrix[Float], IndexedSeq[BleuStats]]]],
                 indices: RDD[Int], point: DenseVector[Float], directions: DenseMatrix[Float]) = {
@@ -115,10 +104,9 @@ object SMERT {
         val (accum, bs) = a
         val (interval, diff) = c
         val currBS = bs + diff
-        val entry = (interval, currBS.computeBleu(), currBS)
+        val entry = (interval, currBS.computeBleu(Option(0.01)), currBS)
         (accum += entry, currBS)
       }
-      //for(i <- intervals) println(i)
       val max = intervals.sliding(2).maxBy(interval => interval(0)._2._1)
       val best = max(1)
       val prev = max(0)
@@ -134,20 +122,31 @@ object SMERT {
   }
 
   @tailrec
-  def iterate(sc: SparkContext, prevPoint: DenseVector[Float], prevBleu: (Double, Double), nbests: Broadcast[BreezeNBest],
-              indices: RDD[Int], deltaBleu: Double, r: RandBasis, noOfRandom: Int, affineDim : Option[Int]): (DenseVector[Float], (Double, Double)) = {
+  def iterate(
+      sc: SparkContext, 
+      prevPoint: DenseVector[Float],
+      prevBleu: (Double, Double), 
+      nbests: Broadcast[BreezeNBest],
+      indices: RDD[Int], 
+      deltaBleu: Double, 
+      r: RandBasis, 
+      noOfRandom: Int, 
+      affineDim : Option[Int],
+      verify: Boolean
+      ): (DenseVector[Float], (Double, Double)) = {
     val directions = generateDirections(r, prevPoint.length, noOfRandom, affineDim)
     val (point, (bleu, bp)) = iteration(nbests, indices, prevPoint, directions)
-    val (verifiedBleu, verifiedBP) = if(false)
-      computeScore(nbests.value, point.t).computeBleu()
+    val (verifiedBleu, verifiedBP) = if(verify)
+      computeScore(nbests.value, point.t).computeBleu(None)
     else
       (0.0, 0.0)
     println(point)
-    println(f"BLEU: $bleu%.6f [$bp%.4f], verified: $verifiedBleu%.6f [$verifiedBP%.4f]")
+    val verifyString =  if (verify) f" verified: $verifiedBleu%.6f [$verifiedBP%.4f]" else ""
+    println(f"BLEU: $bleu%.6f [$bp%.4f]" + verifyString)
     if ((bleu - prevBleu._1) < deltaBleu)
       (prevPoint, prevBleu)
     else
-      iterate(sc, point.t, (bleu, bp), nbests, indices, deltaBleu, r, noOfRandom, affineDim)
+      iterate(sc, point.t, (bleu, bp), nbests, indices, deltaBleu, r, noOfRandom, affineDim, verify)
   }
 
   def doSmert(nbests: Seq[(DenseMatrix[Float], IndexedSeq[BleuStats])], conf: Config)(implicit sc: SparkContext) : (DenseVector[Float], (Double, Double))= {
@@ -161,7 +160,7 @@ object SMERT {
         affineDim.map {tmp(_)=1f}
         tmp
       })
-    val res = for (i <- initials.par) yield iterate(sc, i, (0.0, 0.0), nbestsBroadcast, indices, deltaBleu, rb, noOfRandom, affineDim)
+    val res = for (i <- initials.par) yield iterate(sc, i, (0.0, 0.0), nbestsBroadcast, indices, deltaBleu, rb, noOfRandom, affineDim, verify)
     val (finalPoint, (finalBleu, finalBP)) = res.maxBy(_._2._1)
     println(f"Found final point with BLEU $finalBleu%.6f [$finalBP%.4f]!")
     (finalPoint, (finalBleu, finalBP))

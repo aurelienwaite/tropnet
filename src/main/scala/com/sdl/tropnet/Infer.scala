@@ -64,7 +64,8 @@ object Infer extends App {
   if(hyps)
     for(t<-topScoring) println(t._2)
   else if(stats){
-    val activatedStats = topScoring.map(_._4).reduce{(a,b) =>
+    val activations = topScoring.map(_._4)
+    val activatedStats = activations.reduce{(a,b) =>
       for((aActivated,bActivated) <- a zip b) yield aActivated + bActivated
     }
     for((count, i) <- activatedStats.view.zipWithIndex) println(s"Activations for unit $i: $count")
