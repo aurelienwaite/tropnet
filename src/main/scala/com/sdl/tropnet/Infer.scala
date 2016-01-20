@@ -39,20 +39,21 @@ object Infer extends App {
   val cliConf = parser.parse(args, Config()).getOrElse(sys.exit())
   import cliConf._
   
-  //println(loadUCamNBest(nbestsDir).size)
+  assert(!params.isEmpty, "Need at least one parameter") 
   
   val topScoring = for{
     nbest <-loadUCamNBest(nbestsDir)
     mat = SMERT.nbestToMatrix(nbest)
   } yield {
-    val ones = DenseMatrix.ones[Float](1, mat.cols)
-    val withBias = DenseMatrix.vertcat(ones, mat)
-    /*for(s <- (params1.t * withBias).t) {
-      println(s)
+    val (scores, activated) = if(params.size > 1) {
+      val ones = DenseMatrix.ones[Float](1, mat.cols)
+      val withBias = DenseMatrix.vertcat(ones, mat)
+      val activated = for (p <- params) yield (p.t * withBias).t.map(math.max(_,0))
+      ((activated.reduce(_ + _)).toArray, activated)
+    } else {
+      val scores = (params.head.t * mat).t
+      (scores.toArray, Seq(scores))
     }
-    sys.exit*/
-    val activated = for (p <- params) yield (p.t * withBias).t.map(math.max(_,0))
-    val scores = activated.reduce(_ + _).toArray
     val (maxScore, maxIndex) = scores.view.zipWithIndex.maxBy(_._1)
     val activatedStats = activated.map(a => if(a(maxIndex) ==0.0) 0 else 1)
     val res = if (maxScore == 0.0) 
