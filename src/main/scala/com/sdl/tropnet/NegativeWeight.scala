@@ -82,7 +82,8 @@ object NegativeWeight {
       affineDim = Some(13),
       noOfInitials = 10,
       noOfRandom = 39,
-      random = r)
+      random = r,
+      activationFactor = Option(0.01))
     val (point, (newBleu, bp)) = SMERT.doSmert(input.seq, conf)
     val res = point(0 to -2) +: other
     (res, (newBleu, bp))
