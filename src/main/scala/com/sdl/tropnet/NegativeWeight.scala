@@ -26,41 +26,25 @@ object NegativeWeight {
     val fireBS = ArrayBuffer[BleuStats]()
     val ones = DenseMatrix.ones[Float](1, in.cols)
     val withBias = DenseMatrix.vertcat(ones, in)
-    val activations = (for (p <- params) yield (p.t * withBias).t.map(math.max(_, 0))).reduce(_ + _)
-    val projected = DenseMatrix.vertcat(withBias, activations.toDenseMatrix)
-    for (c <- 0 until projected.cols) {
-      val initial = projected(-1, c)
-      if (initial != 0f) {
-        val fireVec = DenseVector.zeros[Float](projected.rows)
-        fireVec(-1) = initial
+    val activations = (for (p <- params) yield (p.t * withBias).t.map(math.max(_, 0)))
+    val activationSum = activations.reduce(_+_)
+    //val projected = DenseMatrix.vertcat((withBias +: activations.map(_.toDenseMatrix) ) :_* )
+    for (c <- 0 until withBias.cols) {
+      val activationsVector = DenseVector.vertcat(activations.map(a=>a(c to c)):_*)
+      if (activationSum(c) != 0f) {
+        val fireVec = DenseVector.vertcat(DenseVector.zeros[Float](withBias.rows), activationsVector)
         fireVecs += fireVec
         fireBS += bleuStats(c).deleteActivations()
       }
-      val row = projected(::, c)
-      row(-1) = initial
+      val row = DenseVector.vertcat(withBias(::, c), activationsVector)
       fireVecs += row
       fireBS += bleuStats(c)
     }
-    fireVecs += DenseVector.zeros[Float](projected.rows)
+    fireVecs += DenseVector.zeros[Float](withBias.rows + params.size)
     fireBS += BleuStats.bad
-    //println(s"${projected.cols} ${fireVecs.size}")
     (DenseMatrix.horzcat(fireVecs.map(_.toDenseMatrix.t): _*), fireBS)
   }
 
-  /*def expandMatrix(in : DenseMatrix[Float], size: Int) = {
-    val withBias =  DenseMatrix.vertcat(DenseMatrix.ones[Float](1, in.cols), in)
-    DenseMatrix.vertcat(Seq.fill(size)(withBias):_*)
-  }
-  
-  def createProjection(params : Seq[DenseVector[Float]]) = {
-    val eye = DenseMatrix.eye[Float](13) 
-    val zeros = DenseMatrix.zeros[Float](13, 13 * params.size)
-    val dirs = DenseMatrix.horzcat(zeros, eye) 
-    val initials = DenseMatrix.horzcat(
-          params.map(_.toDenseMatrix) :+ 
-          DenseMatrix.zeros[Float](1, 13) :_*)
-    DenseMatrix.vertcat(dirs,initials)     
-  }*/
 
   def printNeurons(neurons: Seq[DenseVector[Float]]) = {
     for ((neuron, i) <- neurons.view.zipWithIndex) {
@@ -76,16 +60,17 @@ object NegativeWeight {
       mat = SMERT.nbestToMatrix(nbest)
       (fire, fireBS) = fireVectors(mat, other, bs)
     } yield (fire, fireBS)
-    val smertInitial = DenseVector.vertcat(paramVec, DenseVector.ones[Float](1))
+    //breeze.linalg.csvwrite(new File("/tmp/fire"), input(0)._1.map(_.toDouble))
+    val smertInitial = DenseVector.vertcat(paramVec, DenseVector.ones[Float](other.size))
     val conf = SMERT.Config(
       initialPoint = smertInitial,
-      affineDim = Some(13),
+      affineDims = (paramVec.size until (paramVec.size + other.length)).toSet,
       noOfInitials = 10,
       noOfRandom = 39,
       random = r,
       activationFactor = Option(0.01))
     val (point, (newBleu, bp)) = SMERT.doSmert(input.seq, conf)
-    val res = point(0 to -2) +: other
+    val res = point(0 until paramVec.length) +: other
     (res, (newBleu, bp))
   }
 
@@ -121,10 +106,8 @@ object NegativeWeight {
     implicit val sc = new SparkContext(sparkConf)
 
     val nbests = loadUCamNBest(new File(args(0)))
-    val MAGIC_BIAS = 250.0
 
-    val initialisedUnit = DenseVector(0, 1.000000, 0.820073, 1.048347, 0.798443, 0.349793, 0.286489, 15.352371, -5.753633, -3.766533, 0.052922, 0.624889, -0.015877).map(_.toFloat)
-    val magicUnit = DenseVector(MAGIC_BIAS, 1.000000, 0.820073, 1.048347, 0.798443, 0.349793, 0.286489, 15.352371, -5.753633, -3.766533, 0.052922, 0.624889, -0.015877).map(_.toFloat)
+    val initialisedUnit = DenseVector(1.0,2.4906442165374756,1.854056477546692,2.6558055877685547,3.3370068073272705,-2.2473344802856445,1.281643271446228,41.036888122558594,-16.5937442779541,-12.700494766235352,-0.45229414105415344,2.266307830810547,0.14411388337612152).map(_.toFloat)
 
     val flat = DenseVector.ones[Float](13)
     val neurons = List.fill(NO_OF_UNITS)(initialisedUnit)
