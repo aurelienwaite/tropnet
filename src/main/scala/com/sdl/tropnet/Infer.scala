@@ -6,18 +6,24 @@ import java.io.File
 import com.sdl.smert.SMERT
 import breeze.linalg.DenseMatrix
 import com.sdl.BleuStats
+import com.sdl.tropnet.NegativeWeight.Neuron
 
 object Infer extends App {
 
   case class Config(
     nbestsDir: File = new File("."),
-    params: Seq[DenseVector[Float]] = Nil,
+    neurons: Seq[Neuron] = Nil,
     hyps: Boolean = false,
     stats: Boolean = false
   )
 
-  def parseParams(paramString: String) = DenseVector(paramString.
-      replace("unit:", "").split(",").map(_.toFloat))
+  def parseParams(paramString: String) = {
+    val fields = paramString.split(";") 
+    val params = DenseVector(fields(1).
+      replace("params:", "").split(",").map(_.toFloat))
+    val multiplier = fields(0).replace("multiplier:", "").toFloat
+    Neuron(params, multiplier)
+  }
 
   val parser = new scopt.OptionParser[Config]("smert") {
     head("smert", "1.0")
@@ -26,7 +32,7 @@ object Infer extends App {
       c.copy(nbestsDir = x)
     }
     arg[String]("parameter vectors...") unbounded() required () action { (x, c) =>
-      c.copy(params = c.params :+ parseParams(x))
+      c.copy(neurons = c.neurons :+ parseParams(x))
     }
     opt[Unit]('h', "hyps") action { (_, c) => 
       c.copy(hyps = true)
@@ -39,19 +45,19 @@ object Infer extends App {
   val cliConf = parser.parse(args, Config()).getOrElse(sys.exit())
   import cliConf._
   
-  assert(!params.isEmpty, "Need at least one parameter") 
+  assert(!neurons.isEmpty, "Need at least one neuron") 
   
   val topScoring = for{
     nbest <-loadUCamNBest(nbestsDir)
     mat = SMERT.nbestToMatrix(nbest)
   } yield {
-    val (scores, activated) = if(params.size > 1) {
+    val (scores, activated) = if(neurons.size > 1) {
       val ones = DenseMatrix.ones[Float](1, mat.cols)
       val withBias = DenseMatrix.vertcat(ones, mat)
-      val activated = for (p <- params) yield (p.t * withBias).t.map(math.max(_,0))
+      val activated = for (n <- neurons) yield (n.params.t * withBias).t.map(math.max(_,0) * n.multiplier)
       ((activated.reduce(_ + _)).toArray, activated)
     } else {
-      val scores = (params.head.t * mat).t
+      val scores = (neurons.head.params.t * mat).t
       (scores.toArray, Seq(scores))
     }
     val (maxScore, maxIndex) = scores.view.zipWithIndex.maxBy(_._1)
