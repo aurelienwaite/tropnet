@@ -6,7 +6,7 @@ import java.io.File
 import com.sdl.smert.SMERT
 import breeze.linalg.DenseMatrix
 import com.sdl.BleuStats
-import com.sdl.tropnet.NegativeWeight.Neuron
+import com.sdl.tropnet.Caetano.Neuron
 
 object Infer extends App {
 

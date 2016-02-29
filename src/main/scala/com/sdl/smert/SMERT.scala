@@ -20,18 +20,19 @@ import breeze.stats.distributions.Gaussian
 import breeze.stats.distributions.RandBasis
 import org.apache.commons.math3.random.RandomGenerator
 import org.apache.commons.math3.random.JDKRandomGenerator
+import com.sdl.smert.Sweep._
 
 object SMERT {
 
   type BreezeNBest = Seq[(DenseMatrix[Float], IndexedSeq[BleuStats])]
-  
-  def computeScore(nbest : BreezeNBest, params : DenseVector[Float]) = nbest.map 
-  { case (proj, bs) => {
+
+  def computeScore(nbest: BreezeNBest, params: DenseVector[Float]) = nbest.map {
+    case (proj, bs) => {
       val scores = (params.t * proj).t
       bs(argsort(scores).last)
     }
-  }.reduce(_+_)
-  
+  }.reduce(_ + _)
+
   def getGenerator(seed: Int = 11) = {
     val r = new JDKRandomGenerator()
     r.setSeed(seed.toLong)
@@ -50,8 +51,8 @@ object SMERT {
     out: File = new File("./params"),
     affineDims: Set[Int] = Set.empty,
     verify: Boolean = false,
-    activationFactor: Option[Double] = None
-  )
+    activationFactor: Option[Double] = None,
+    sweepFunc: SweepFunc = Sweep.sweepLine)
 
   def doSvd(): Unit = {
     /*    val trainingSet : RDD[org.apache.spark.mllib.linalg.Vector] = for(nbest <- nbests; hyp <- nbest) yield{
@@ -63,18 +64,18 @@ object SMERT {
 
   }
 
-  def generateDirections(r: RandBasis, d: Int, noOfRandom: Int, affineDims : Set[Int]) = {
-    val axes = for(i <- 0 until d) yield {
-      if(!affineDims(i)) {
+  def generateDirections(r: RandBasis, d: Int, noOfRandom: Int, affineDims: Set[Int]) = {
+    val axes = for (i <- 0 until d) yield {
+      if (!affineDims(i)) {
         val row = DenseMatrix.zeros[Float](1, d)
         row(0, i) = 1f
         Some(row)
       } else None
     }
-    val axesMat = DenseMatrix.vertcat(axes.flatten:_*)
+    val axesMat = DenseMatrix.vertcat(axes.flatten: _*)
     val rand = DenseMatrix.rand(noOfRandom, d, Gaussian(0, 1)(r)).map(_.toFloat)
-    affineDims map { c =>    
-      for(r <- 0 until noOfRandom) rand(r, c) = 0f
+    affineDims map { c =>
+      for (r <- 0 until noOfRandom) rand(r, c) = 0f
     }
     DenseMatrix.vertcat(axesMat, rand)
   }
@@ -90,36 +91,43 @@ object SMERT {
     new DenseMatrix(fVecDim, in.size, buf.toArray)
   }
 
-
   def iteration(
-       nbests: Broadcast[Seq[Tuple2[DenseMatrix[Float], 
-       IndexedSeq[BleuStats]]]],
-       indices: RDD[Int], 
-       point: DenseVector[Float], 
-       directions: DenseMatrix[Float],
-       activationFactor: Option[Double]     
-  ) = {
-    val swept = indices.map(nbests.value(_)).map(Sweep.sweep(point, directions)_)
+    nbests: Broadcast[Seq[Tuple2[DenseMatrix[Float], IndexedSeq[BleuStats]]]],
+    indices: RDD[Int],
+    point: DenseVector[Float],
+    directions: DenseMatrix[Float],
+    activationFactor: Option[Double],
+    sweepFunc: SweepFunc) = {
+    val swept = indices.map { i =>
+      println(i)
+      nbests.value(i)
+    }.map(Sweep.sweep(point, directions, sweepFunc)_)
+    println(s"Done iteration")
     val reduced = swept.reduce((a, b) => {
-      for ( ((bsA, seqA), (bsB, seqB)) <- a zip b) yield {
+      for (((bsA, seqA), (bsB, seqB)) <- a zip b) yield {
         (bsA + bsB, (seqA ++ seqB))
       }
     })
-    val updates = for {((startBS, collected), d) <- reduced.view.zipWithIndex} yield {
+    val updates = for { ((startBS, collected), d) <- reduced.view.zipWithIndex } yield {
       val sortedLine = collected.sortBy(interval => interval._1)
       val intervals = ArrayBuffer[(Float, (Double, Double), BleuStats)]()
-      sortedLine.foldLeft((intervals, startBS)){ (a, c) =>
+      sortedLine.foldLeft((intervals, startBS)) { (a, c) =>
         val (accum, bs) = a
         val (interval, diff) = c
         val currBS = bs + diff
         val entry = (interval, currBS.computeBleu(activationFactor), currBS)
         (accum += entry, currBS)
       }
-      val max = intervals.sliding(2).maxBy(interval => interval(0)._2._1)
-      val best = max(1)
-      val prev = max(0)
-      val (bleu, bp) = prev._2
-      val update = (best._1 + prev._1) / 2
+      val sliding = intervals.sliding(2).toSeq
+      val (update, (bleu, bp)) = if (sliding.size > 1) {
+        val max = sliding.maxBy(interval => interval(0)._2._1)
+        val best = max(1)
+        val prev = max(0)
+        //val (bleu, bp) = prev._2
+        ((best._1 + prev._1) / 2, prev._2)
+      } else {
+        (Float.NaN, (0.0, 0.0))
+      }
       if (!update.isNaN) {
         val updatedPoint = DenseVector(update, 1).t * Sweep.createProjectionMatrix(directions(d, ::).t, point)
         (updatedPoint, (bleu, bp))
@@ -131,46 +139,46 @@ object SMERT {
 
   @tailrec
   def iterate(
-      sc: SparkContext, 
-      prevPoint: DenseVector[Float],
-      prevBleu: (Double, Double), 
-      nbests: Broadcast[BreezeNBest],
-      indices: RDD[Int], 
-      deltaBleu: Double, 
-      r: RandBasis, 
-      noOfRandom: Int, 
-      affineDims : Set[Int],
-      verify: Boolean,
-      activationFactor: Option[Double]
-      ): (DenseVector[Float], (Double, Double)) = {
+    sc: SparkContext,
+    prevPoint: DenseVector[Float],
+    prevBleu: (Double, Double),
+    nbests: Broadcast[BreezeNBest],
+    indices: RDD[Int],
+    deltaBleu: Double,
+    r: RandBasis,
+    noOfRandom: Int,
+    affineDims: Set[Int],
+    verify: Boolean,
+    activationFactor: Option[Double],
+    sweepFunc: Sweep.SweepFunc): (DenseVector[Float], (Double, Double)) = {
     val directions = generateDirections(r, prevPoint.length, noOfRandom, affineDims)
-    val (point, (bleu, bp)) = iteration(nbests, indices, prevPoint, directions, activationFactor)
-    val (verifiedBleu, verifiedBP) = if(verify)
+    val (point, (bleu, bp)) = iteration(nbests, indices, prevPoint, directions, activationFactor, sweepFunc)
+    val (verifiedBleu, verifiedBP) = if (verify)
       computeScore(nbests.value, point.t).computeBleu(None)
     else
       (0.0, 0.0)
     println(point)
-    val verifyString =  if (verify) f" verified: $verifiedBleu%.6f [$verifiedBP%.4f]" else ""
+    val verifyString = if (verify) f" verified: $verifiedBleu%.6f [$verifiedBP%.4f]" else ""
     println(f"BLEU: $bleu%.6f [$bp%.4f]" + verifyString)
     if ((bleu - prevBleu._1) < deltaBleu)
       (prevPoint, prevBleu)
     else
-      iterate(sc, point.t, (bleu, bp), nbests, indices, deltaBleu, r, noOfRandom, affineDims, verify, activationFactor)
+      iterate(sc, point.t, (bleu, bp), nbests, indices, deltaBleu, r, noOfRandom, affineDims, verify, activationFactor, sweepFunc)
   }
 
-  def doSmert(nbests: Seq[(DenseMatrix[Float], IndexedSeq[BleuStats])], conf: Config)(implicit sc: SparkContext) : (DenseVector[Float], (Double, Double))= {
+  def doSmert(nbests: Seq[(DenseMatrix[Float], IndexedSeq[BleuStats])], conf: Config)(implicit sc: SparkContext): (DenseVector[Float], (Double, Double)) = {
     import conf._
     val rb = new RandBasis(random)
     val indices = sc.parallelize(0 until nbests.length)
     val nbestsBroadcast = sc.broadcast(nbests)
     val initials = scala.collection.immutable.Vector(initialPoint) ++
-      (for (i <- 0 until noOfInitials) yield { 
+      (for (i <- 0 until noOfInitials) yield {
         val tmp = DenseVector.rand(initialPoint.size, Gaussian(0, 1)(rb)).map(_.toFloat)
-        affineDims.map {tmp(_)=1f}
+        affineDims.map { tmp(_) = 1f }
         tmp
       })
-    val res = for (i <- initials.par) 
-      yield iterate(sc, i, (0.0, 0.0), nbestsBroadcast, indices, deltaBleu, rb, noOfRandom, affineDims, verify, activationFactor)
+    val res = for (i <- initials.par)
+      yield iterate(sc, i, (0.0, 0.0), nbestsBroadcast, indices, deltaBleu, rb, noOfRandom, affineDims, verify, activationFactor, sweepFunc)
     val (finalPoint, (finalBleu, finalBP)) = res.maxBy(_._2._1)
     println(f"Found final point with BLEU $finalBleu%.6f [$finalBP%.4f]!")
     (finalPoint, (finalBleu, finalBP))
@@ -223,7 +231,7 @@ object SMERT {
           (mat, bs)
         }
     }.seq
-    val (finalPoint,_) = doSmert(nbests, cliConf)
+    val (finalPoint, _) = doSmert(nbests, cliConf)
     breeze.linalg.csvwrite(out, finalPoint.toDenseMatrix.map(_.toDouble))
     println(finalPoint)
   }

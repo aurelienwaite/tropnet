@@ -18,7 +18,7 @@ import org.apache.commons.math3.random.RandomGenerator
 import breeze.stats.distributions.Gaussian
 import breeze.stats.distributions.RandBasis
 
-object NegativeWeight {
+object Caetano {
 
   case class Neuron(params: DenseVector[Float], multiplier: Float){
     override def toString() = {
@@ -35,10 +35,10 @@ object NegativeWeight {
     val fireVecs = ArrayBuffer[DenseVector[Float]]()
     val fireBS = ArrayBuffer[BleuStats]()
     val ones = DenseMatrix.ones[Float](1, in.cols)
-    val absolute = math.abs(multiplier)
+    //val absolute = math.abs(multiplier)
     val withBias = DenseMatrix.vertcat(ones, in)
-    val scaled = withBias.map(_ / absolute)
-    val activations = (for (n <- neurons) yield (n.params.t * scaled).t.map(math.max(_, 0)))
+    val scaled = withBias.map(_ / multiplier)
+    val activations = (for (n <- neurons) yield (n.params.t * withBias).t.map(math.max(_, 0)))
     val activationSum = activations.reduce(_+_)
     for (c <- 0 until scaled.cols) {
       val activationsVector = DenseVector.vertcat(activations.map(a=>a(c to c)):_*)
@@ -54,9 +54,8 @@ object NegativeWeight {
     fireVecs += DenseVector.zeros[Float](scaled.rows + neurons.size)
     fireBS += BleuStats.bad
     val out = DenseMatrix.horzcat(fireVecs.map(_.toDenseMatrix.t): _*)
-    val res = if(multiplier < 0) out.map(_ * -1) else out
-    //breeze.linalg csvwrite(new File("/tmp/fire"), res.map(_.toDouble))
-    (res, fireBS)
+    //val res = if(multiplier < 0) out.map(_ * -1) else out
+    (out, fireBS)
   }
 
 
@@ -117,7 +116,7 @@ object NegativeWeight {
 
     val NO_OF_UNITS = args(1).toInt
 
-    val sparkConf = new SparkConf().setAppName("Negative Weight")
+    val sparkConf = new SparkConf().setAppName("Caetano")
     sparkConf.setMaster("local[8]")
     implicit val sc = new SparkContext(sparkConf)
 
