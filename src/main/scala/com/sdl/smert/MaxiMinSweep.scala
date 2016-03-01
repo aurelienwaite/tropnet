@@ -42,10 +42,12 @@ object MaxiMinSweep {
     }
 
     val sorted = minksum.sortBy(_._2._1.x)
-    val initials = for (s <- sorted) yield (s._1)
     // A bit hacky, but parallel lines are stored twice
     //TODO: Fix so if empty add bad
     val filtered = sorted.filter{case (left, right, _) => left!=right} 
+    val initials = for (s <- sorted) yield (s._1)
+
+    
     
     //println(filtered.size)
 
@@ -54,12 +56,19 @@ object MaxiMinSweep {
       slice(1) = l.y
     }
 
+    /*
+     * Converts a sequence of L objects into a Matrix representation of the NBest
+     */
     def nbest2Mat(nbest: IndexedSeq[(L, BleuStats)]) = {
       val nbestMat = DenseMatrix.zeros[Float](2, nbest.size)
       for (((l, _), i) <- nbest.view.zipWithIndex) update(nbestMat(::, i), l)
       (nbestMat, nbest.map(_._2))
     }
 
+    /*
+     * Creates a set of intervals. In each interval a hypothesis is minimal. The output is a set of N-best lists in matrix
+     * form with the minimal representation
+     */
     val minned = filtered.foldLeft(List((nbest2Mat(initials), Float.NegativeInfinity))) { (prev, s) =>
       val (_, (l, bs), index) = s
       val (nbest, _) = prev.last
@@ -67,6 +76,10 @@ object MaxiMinSweep {
       update(updated(::, index), l)
       val bsUpdated = nbest._2.updated(index, bs)
       prev :+ ((updated, bsUpdated), l.x)
+    }
+    
+    for(((m, b),i) <-minned) {
+      println(s"${m.cols} ${m.rows} ${b.size} $i")
     }
 
     @tailrec
