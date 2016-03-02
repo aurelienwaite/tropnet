@@ -78,8 +78,15 @@ object MaxiMinSweep {
       prev :+ ((updated, bsUpdated), l.x)
     }
     
-    for(((m, b),i) <-minned) {
-      println(s"${m.cols} ${m.rows} ${b.size} $i")
+    for( seq <- minned.sliding(2)) seq match { 
+      case Seq(((m, b),start), ((_, _),end)) => {
+        println(s"${m.cols} ${m.rows} ${b.size} $start $end")
+        val point = DenseVector((start + end) /2 , 1).t * projection
+        println(point)
+        
+      }
+      case Seq(((m, b),start)) => 
+        println(s"${m.rows} ${b.size} $start")
     }
 
     @tailrec
