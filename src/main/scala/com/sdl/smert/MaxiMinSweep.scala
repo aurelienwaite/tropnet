@@ -22,10 +22,10 @@ object MaxiMinSweep {
       val l = Seq((L(projectedActivated(::, c), c), bs(c)), (L(projectedDeactivated(::, c), c), deactivatedBS)).sortBy(_._1.m)
       val left = l(0)._1
       val right = l(1)._1
-      //If both have the same gradient, then pick the one with the highest y
+      //If both have the same gradient, then pick the one with the lowest y
       if (left.m == right.m) {
         val resorted = l.sortBy(_._1.y)
-        (resorted(1), resorted(1), c)
+        (resorted(0), resorted(0), c)
       } else {
         left.x = (right.y - left.y) / (left.m - right.m)
         /*val update = DenseVector(right.x + 1, 1).t * projection
@@ -78,6 +78,7 @@ object MaxiMinSweep {
       prev :+ ((updated, bsUpdated), l.x)
     }
     
+    println(projection(0, ::).t)
     for( seq <- minned.sliding(2)) seq match { 
       case Seq(((m, b),start), ((_, _),end)) => {
         //println(s"${m.cols} ${m.rows} ${b.size} $start $end")
@@ -85,9 +86,9 @@ object MaxiMinSweep {
         val point = DenseVector((checked + end) /2 , 1).t * projection
         val activatedScores = (point * activated).t
         val deactivatedScores = (point * deactivated).t
-        for( ((a, d), bs) <- activatedScores.toScalaVector() zip deactivatedScores.toScalaVector() zip b) {
+        for( (((a, d), bs), i) <- (activatedScores.toScalaVector() zip deactivatedScores.toScalaVector() zip b).view.zipWithIndex) {
           if((a>d && bs.activated == 1) || (d>a && bs.activated == 0)) 
-            println(s"$a $d ${bs.activated}")
+            println(s"$a $d ${bs.activated} ${m(::, i)}")
         }
         
       }
