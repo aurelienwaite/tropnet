@@ -80,9 +80,15 @@ object MaxiMinSweep {
     
     for( seq <- minned.sliding(2)) seq match { 
       case Seq(((m, b),start), ((_, _),end)) => {
-        println(s"${m.cols} ${m.rows} ${b.size} $start $end")
-        val point = DenseVector((start + end) /2 , 1).t * projection
-        println(point)
+        //println(s"${m.cols} ${m.rows} ${b.size} $start $end")
+        val checked = if (start.isNegInfinity) end - 2 else start
+        val point = DenseVector((checked + end) /2 , 1).t * projection
+        val activatedScores = (point * activated).t
+        val deactivatedScores = (point * deactivated).t
+        for( ((a, d), bs) <- activatedScores.toScalaVector() zip deactivatedScores.toScalaVector() zip b) {
+          if((a>d && bs.activated == 1) || (d>a && bs.activated == 0)) 
+            println(s"$a $d ${bs.activated}")
+        }
         
       }
       case Seq(((m, b),start)) => 
