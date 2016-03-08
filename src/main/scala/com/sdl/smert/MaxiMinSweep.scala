@@ -25,7 +25,12 @@ object MaxiMinSweep {
       //If both have the same gradient, then pick the one with the lowest y
       if (left.m == right.m) {
         val resorted = l.sortBy(_._1.y)
-        (resorted(0), resorted(0), c)
+        //println(resorted)
+        println(resorted.head)
+        println(resorted.head._2.activated)
+        println(resorted.last)
+        //println(resorted(0))
+        (resorted.head, resorted.head, c)
       } else {
         left.x = (right.y - left.y) / (left.m - right.m)
         /*val update = DenseVector(right.x + 1, 1).t * projection
@@ -40,6 +45,8 @@ object MaxiMinSweep {
         (l(1), l(0), c)
       }
     }
+    for(m<-minksum) println(m)
+    //println(minksum)
 
     val sorted = minksum.sortBy(_._2._1.x)
     // A bit hacky, but parallel lines are stored twice
@@ -51,9 +58,13 @@ object MaxiMinSweep {
     
     //println(filtered.size)
 
-    def update(slice: DenseVector[Float], l: L) = {
-      slice(0) = l.m
-      slice(1) = l.y
+    def update(nbest: DenseMatrix[Float], index: Int, bs : BleuStats) = {
+      val update =  if(bs.activated ==1) 
+        projectedActivated(::, index)
+      else
+        projectedDeactivated(::, index)
+      nbest(::, index) := update
+      nbest
     }
 
     /*
@@ -61,7 +72,7 @@ object MaxiMinSweep {
      */
     def nbest2Mat(nbest: IndexedSeq[(L, BleuStats)]) = {
       val nbestMat = DenseMatrix.zeros[Float](2, nbest.size)
-      for (((l, _), i) <- nbest.view.zipWithIndex) update(nbestMat(::, i), l)
+      for (((l, bs), i) <- nbest.view.zipWithIndex) update(nbestMat, i, bs)
       (nbestMat, nbest.map(_._2))
     }
 
@@ -71,24 +82,24 @@ object MaxiMinSweep {
      */
     val minned = filtered.foldLeft(List((nbest2Mat(initials), Float.NegativeInfinity))) { (prev, s) =>
       val (_, (l, bs), index) = s
-      val (nbest, _) = prev.last
-      val updated = nbest._1.copy
-      update(updated(::, index), l)
+      val (nbest, _) = prev.last     
+      val updated = nbest._1.copy 
+      update(updated, index, bs)
       val bsUpdated = nbest._2.updated(index, bs)
       prev :+ ((updated, bsUpdated), l.x)
     }
     
-    println(projection(0, ::).t)
     for( seq <- minned.sliding(2)) seq match { 
       case Seq(((m, b),start), ((_, _),end)) => {
         //println(s"${m.cols} ${m.rows} ${b.size} $start $end")
         val checked = if (start.isNegInfinity) end - 2 else start
-        val point = DenseVector((checked + end) /2 , 1).t * projection
-        val activatedScores = (point * activated).t
-        val deactivatedScores = (point * deactivated).t
+        val point = DenseVector((checked + end) /2 , 1).t
+        val activatedScores = (point * projectedActivated).t
+        val deactivatedScores = (point * projectedDeactivated).t
         for( (((a, d), bs), i) <- (activatedScores.toScalaVector() zip deactivatedScores.toScalaVector() zip b).view.zipWithIndex) {
-          if((a>d && bs.activated == 1) || (d>a && bs.activated == 0)) 
-            println(s"$a $d ${bs.activated} ${m(::, i)}")
+          if((a>d && bs.activated == 1) || (d>a && bs.activated == 0)) {
+            println(s"$a $d ${bs.activated} ${m(::, i)} ${projectedActivated(::, i)} ${projectedDeactivated(::, i)}")
+          }
         }
         
       }
