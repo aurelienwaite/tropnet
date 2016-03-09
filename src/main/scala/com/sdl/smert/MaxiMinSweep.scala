@@ -24,6 +24,7 @@ object MaxiMinSweep {
       val right = l(1)._1
       //If both have the same gradient, then pick the one with the lowest y
       if (left.m == right.m) {
+        
         val resorted = l.sortBy(_._1.y)
         //println(resorted)
         println(resorted.head)
@@ -53,8 +54,13 @@ object MaxiMinSweep {
     //TODO: Fix so if empty add bad
     val filtered = sorted.filter{case (left, right, _) => left!=right} 
     val initials = for (s <- sorted) yield (s._1)
-
-    
+    println("initials")
+    for(i<-initials)
+      println(i)
+    println("filtered")
+    for(f<-filtered)
+      println(f)
+    //sys.exit
     
     //println(filtered.size)
 
@@ -82,6 +88,7 @@ object MaxiMinSweep {
      */
     val minned = filtered.foldLeft(List((nbest2Mat(initials), Float.NegativeInfinity))) { (prev, s) =>
       val (_, (l, bs), index) = s
+      println(s"$index ${l.x}") 
       val (nbest, _) = prev.last     
       val updated = nbest._1.copy 
       update(updated, index, bs)
@@ -98,7 +105,7 @@ object MaxiMinSweep {
         val deactivatedScores = (point * projectedDeactivated).t
         for( (((a, d), bs), i) <- (activatedScores.toScalaVector() zip deactivatedScores.toScalaVector() zip b).view.zipWithIndex) {
           if((a>d && bs.activated == 1) || (d>a && bs.activated == 0)) {
-            println(s"$a $d ${bs.activated} ${m(::, i)} ${projectedActivated(::, i)} ${projectedDeactivated(::, i)}")
+            println(s"$i $checked $end $a $d ${bs.activated} ${m(::, i)} ${projectedActivated(::, i)} ${projectedDeactivated(::, i)}")
           }
         }
         
