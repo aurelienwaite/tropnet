@@ -7,6 +7,7 @@ import breeze.linalg.sum
 import breeze.linalg.DenseVector
 import scala.annotation.tailrec
 import scala.collection.mutable.Buffer
+import scala.collection.mutable.ArrayBuffer
 
 object MaxiMinSweep {
 
@@ -24,12 +25,12 @@ object MaxiMinSweep {
       val right = l(1)._1
       //If both have the same gradient, then pick the one with the lowest y
       if (left.m == right.m) {
-        
+
         val resorted = l.sortBy(_._1.y)
         //println(resorted)
-        println(resorted.head)
-        println(resorted.head._2.activated)
-        println(resorted.last)
+        //println(resorted.head)
+        //println(resorted.head._2.activated)
+        //println(resorted.last)
         //println(resorted(0))
         (resorted.head, resorted.head, c)
       } else {
@@ -46,40 +47,40 @@ object MaxiMinSweep {
         (l(1), l(0), c)
       }
     }
-    for(m<-minksum) println(m)
+    //for (m <- minksum) println(m)
     //println(minksum)
 
     val sorted = minksum.sortBy(_._2._1.x)
-    // A bit hacky, but parallel lines are stored twice
-    //TODO: Fix so if empty add bad
-    val filtered = sorted.filter{case (left, right, _) => left!=right} 
-    val initials = for (s <- sorted) yield (s._1)
-    println("initials")
-    for(i<-initials)
+    // A bit hacky, but parallel lines are stored twice, so filter them out
+    val filtered = sorted.filter { case (left, right, _) => left != right }
+    val initials = for (s <- sorted) yield (s._1, s._3)
+    /*println("initials")
+    for (i <- initials)
       println(i)
     println("filtered")
-    for(f<-filtered)
+    for (f <- filtered)
       println(f)
-    //sys.exit
-    
+    sys.exit*/
+
     //println(filtered.size)
 
-    def update(nbest: DenseMatrix[Float], index: Int, bs : BleuStats) = {
-      val update =  if(bs.activated == 1) 
-        projectedActivated(::, index)
-      else
-        projectedDeactivated(::, index)
-      nbest(::, index) := update
+    def update(nbest: DenseMatrix[Float], index: Int, l: L) = {
+      nbest(0, index) = l.m
+      nbest(1, index) = l.y
       nbest
     }
 
     /*
      * Converts a sequence of L objects into a Matrix representation of the NBest
      */
-    def nbest2Mat(nbest: IndexedSeq[(L, BleuStats)]) = {
+    def nbest2Mat(nbest: IndexedSeq[((L, BleuStats), Int)]) = {
       val nbestMat = DenseMatrix.zeros[Float](2, nbest.size)
-      for (((l, bs), i) <- nbest.view.zipWithIndex) update(nbestMat, i, bs)
-      (nbestMat, nbest.map(_._2))
+      val updatedBs = ArrayBuffer.fill(nbest.size)(BleuStats.empty)
+      for (((l, bs), i) <- nbest) {
+        update(nbestMat, i, l)
+        updatedBs(i) = bs
+      }
+      (nbestMat, updatedBs)
     }
 
     /*
@@ -88,35 +89,35 @@ object MaxiMinSweep {
      */
     val minned = filtered.foldLeft(List((nbest2Mat(initials), Float.NegativeInfinity))) { (prev, s) =>
       val (_, (l, bs), index) = s
-      println(s"$index ${l.x}") 
-      val (nbest, _) = prev.last     
-      val updated = nbest._1.copy 
-      update(updated, index, bs)
-      println(updated(::, 67))
+      //println(s"$index ${l.x}")
+      val (nbest, _) = prev.last
+      val updated = nbest._1.copy
+      update(updated, index, l)
+      //println(updated(::, 67))
       val bsUpdated = nbest._2.updated(index, bs)
       prev :+ ((updated, bsUpdated), l.x)
     }
-    
-    for( seq <- minned.sliding(2)) seq match { 
-      case Seq(((m, b),start), ((_, _),end)) => {
+
+    /*for (seq <- minned.sliding(2)) seq match {
+      case Seq(((m, b), start), ((_, _), end)) => {
         //println(s"${m.cols} ${m.rows} ${b.size} $start $end")
         val checked = if (start.isNegInfinity) end - 2 else start
-        val point = DenseVector((checked + end) /2 , 1).t
+        val point = DenseVector((checked + end) / 2, 1).t
         val activatedScores = (point * projectedActivated).t
         val deactivatedScores = (point * projectedDeactivated).t
-        for( (((a, d), bs), i) <- (activatedScores.toScalaVector() zip deactivatedScores.toScalaVector() zip b).view.zipWithIndex) {
-          if((a>d && bs.activated == 1) || (d>a && bs.activated == 0)) {
+        for ((((a, d), bs), i) <- (activatedScores.toScalaVector() zip deactivatedScores.toScalaVector() zip b).view.zipWithIndex) {
+          if ((a > d && bs.activated == 1) || (d > a && bs.activated == 0)) {
             println(s"sviib $i $checked $end $a $d ${bs.activated} ${m(::, i)} ${projectedActivated(::, i)} ${projectedDeactivated(::, i)}")
           }
         }
-        
+
       }
-      case Seq(((m, b),start)) => 
+      case Seq(((m, b), start)) =>
         println(s"${m.rows} ${b.size} $start")
-    }
+    }*/
 
     @tailrec
-    def sweepOverMinned(in: List[((DenseMatrix[Float], IndexedSeq[BleuStats]), Float)], accum: Buffer[(Float, BleuStats)]): Seq[(Float, Int)] = {
+    def sweepOverMinned(in: List[((DenseMatrix[Float], IndexedSeq[BleuStats]), Float)], accum: Buffer[(Float, BleuStats)]): Seq[(Float, Int)] =
       in match {
         case Nil => Nil
         case head :: tail => {
@@ -156,7 +157,6 @@ object MaxiMinSweep {
           sweepOverMinned(tail, accum)
         }
       }
-    }
 
     val swept = Buffer[(Float, BleuStats)]()
     sweepOverMinned(minned, swept)
