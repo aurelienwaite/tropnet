@@ -65,7 +65,7 @@ object MaxiMinSweep {
     //println(filtered.size)
 
     def update(nbest: DenseMatrix[Float], index: Int, bs : BleuStats) = {
-      val update =  if(bs.activated ==1) 
+      val update =  if(bs.activated == 1) 
         projectedActivated(::, index)
       else
         projectedDeactivated(::, index)
@@ -92,6 +92,7 @@ object MaxiMinSweep {
       val (nbest, _) = prev.last     
       val updated = nbest._1.copy 
       update(updated, index, bs)
+      println(updated(::, 67))
       val bsUpdated = nbest._2.updated(index, bs)
       prev :+ ((updated, bsUpdated), l.x)
     }
@@ -105,7 +106,7 @@ object MaxiMinSweep {
         val deactivatedScores = (point * projectedDeactivated).t
         for( (((a, d), bs), i) <- (activatedScores.toScalaVector() zip deactivatedScores.toScalaVector() zip b).view.zipWithIndex) {
           if((a>d && bs.activated == 1) || (d>a && bs.activated == 0)) {
-            println(s"$i $checked $end $a $d ${bs.activated} ${m(::, i)} ${projectedActivated(::, i)} ${projectedDeactivated(::, i)}")
+            println(s"sviib $i $checked $end $a $d ${bs.activated} ${m(::, i)} ${projectedActivated(::, i)} ${projectedDeactivated(::, i)}")
           }
         }
         
