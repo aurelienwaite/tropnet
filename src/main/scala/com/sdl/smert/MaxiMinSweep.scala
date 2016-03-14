@@ -116,6 +116,55 @@ object MaxiMinSweep {
         println(s"${m.rows} ${b.size} $start")
     }*/
 
+    case class I(start: Float, end: Float, index: Int)
+    val endI = (Float.PositiveInfinity, Int.MinValue)
+    
+    def extractIntervals(swept: Seq[(Float, Int)]) = {
+      (for (interval <- (swept :+ endI).sliding(2)) yield interval match {
+        //case Seq((Float.NegativeInfinity, _), _) => Seq.empty
+        case Seq((start, index), (end, _))       => Seq(I(start, end, index))
+        case Seq(_)                         => Seq.empty
+      }).flatten
+    }
+      
+      
+    for(((_,_),i) <- minned) print(s"$i, ")
+    
+    val endMinned = ((DenseMatrix.zeros[Float](0, 0), ArrayBuffer.empty), Float.PositiveInfinity)
+    
+    val maximinned = for (seq <- (minned :+ endMinned).sliding(2)) yield seq match {
+      case Seq(((mat, bs), start), ((_, _), end)) => {
+        val swept = Sweep.sweepLine(mat)
+        val intervals = extractIntervals(swept)
+        //println(s"$start, $end " + intervals.mkString(", "))
+        val filtered = for (interval <- intervals) yield {
+          if (interval.start >= start && interval.end < end) Seq(interval) // interval is contained
+          else if (interval.start < start && interval.end > start && interval.end < end) Seq(I(start, interval.end, interval.index)) //interval starts before
+          else if (interval.start >= start && interval.start < end && interval.end >= end) Seq(I(interval.start, end, interval.index)) // interval ends after
+          else if (interval.start < start && interval.end >= end) Seq(I(start, end, interval.index)) // interval contains 
+          else Seq.empty // intervals do not overlap
+        }
+        val res = filtered.flatten.toSeq
+        for(i <- res) println(i)
+        res
+      }
+      case Seq(((mat, bs), start)) => Seq.empty
+    }
+
+    def mergeIntervals(toMerge: Seq[I], out : Buffer[I]) = {
+      toMerge match {
+        case first :: second :: tail => if(first.index == second.index) {
+          out += I(first.start, second.end, first.index)  
+        }
+          
+        else {
+          out += first
+        }
+      }
+    }
+    
+    sys.exit()
+
     @tailrec
     def sweepOverMinned(in: List[((DenseMatrix[Float], IndexedSeq[BleuStats]), Float)], accum: Buffer[(Float, BleuStats)]): Seq[(Float, Int)] =
       in match {
