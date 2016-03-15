@@ -29,7 +29,7 @@ object MaxiMinMert extends App {
   val nbests = loadUCamNBest(new File(args(0)))
 
   val sparkConf = new SparkConf().setAppName("MaxiMin")
-  sparkConf.setMaster("local[1]")
+  sparkConf.setMaster("local[8]")
   implicit val sc = new SparkContext(sparkConf)
 
   val input = for {

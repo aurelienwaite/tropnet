@@ -118,20 +118,19 @@ object MaxiMinSweep {
 
     case class I(start: Float, end: Float, index: Int)
     val endI = (Float.PositiveInfinity, Int.MinValue)
-    
+
     def extractIntervals(swept: Seq[(Float, Int)]) = {
       (for (interval <- (swept :+ endI).sliding(2)) yield interval match {
         //case Seq((Float.NegativeInfinity, _), _) => Seq.empty
-        case Seq((start, index), (end, _))       => Seq(I(start, end, index))
-        case Seq(_)                         => Seq.empty
+        case Seq((start, index), (end, _)) => Seq(I(start, end, index))
+        case Seq(_)                        => Seq.empty
       }).flatten
     }
-      
-      
-    for(((_,_),i) <- minned) print(s"$i, ")
-    
+
+    //for (((_, _), i) <- minned) print(s"$i, ")
+
     val endMinned = ((DenseMatrix.zeros[Float](0, 0), ArrayBuffer.empty), Float.PositiveInfinity)
-    
+
     val maximinned = for (seq <- (minned :+ endMinned).sliding(2)) yield seq match {
       case Seq(((mat, bs), start), ((_, _), end)) => {
         val swept = Sweep.sweepLine(mat)
@@ -145,27 +144,28 @@ object MaxiMinSweep {
           else Seq.empty // intervals do not overlap
         }
         val res = filtered.flatten.toSeq
-        for(i <- res) println(i)
+        //for (i <- res) println(i)
         res
       }
       case Seq(((mat, bs), start)) => Seq.empty
     }
 
-    def mergeIntervals(toMerge: Seq[I], out : Buffer[I]) = {
-      toMerge match {
-        case first :: second :: tail => if(first.index == second.index) {
-          out += I(first.start, second.end, first.index)  
-        }
-          
-        else {
-          out += first
-        }
-      }
-    }
-    
-    sys.exit()
+    val mmSeq = maximinned.flatten.toSeq
 
-    @tailrec
+    val mmMerged = mmSeq.tail.foldLeft(ArrayBuffer[I](mmSeq.head)) { (accum, next) =>
+      if (accum.last.index == next.index) {
+        val last = accum.remove(accum.length - 1)
+        accum += I(last.start, next.end, next.index)
+      } else
+        accum += next
+    }
+    //println(mmMerged)
+    val res = mmMerged.map(i => (i.start, bs(i.index)))
+    res
+  }
+    //sys.exit()
+
+    /*@tailrec
     def sweepOverMinned(in: List[((DenseMatrix[Float], IndexedSeq[BleuStats]), Float)], accum: Buffer[(Float, BleuStats)]): Seq[(Float, Int)] =
       in match {
         case Nil => Nil
@@ -216,6 +216,6 @@ object MaxiMinSweep {
     val res = merged.toIndexedSeq
     //println(res)
     res
-  }
+  }*/
 
 }
