@@ -50,7 +50,7 @@ object MaxiMinMert extends App {
   val conf = SMERT.Config(
     initialPoint = smertInitial,
     noOfInitials = 0,
-    sweepFunc = MaxiMinSweep.maxiMinSweepLine(0 until (toOptimise.params.length + 1))_,
+    sweepFunc = MaxiMinSweep.maxiMinSweepLine(0 until (toOptimise.params.length))_,
     noOfRandom = 0 //,
     //activationFactor = Option(0.01)
     )

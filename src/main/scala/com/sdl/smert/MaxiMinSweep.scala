@@ -8,6 +8,7 @@ import breeze.linalg.DenseVector
 import scala.annotation.tailrec
 import scala.collection.mutable.Buffer
 import scala.collection.mutable.ArrayBuffer
+import java.io.File
 
 object MaxiMinSweep {
 
@@ -15,6 +16,8 @@ object MaxiMinSweep {
 
     val deactivated = activated.copy
     deactivated(toDelete, ::) := 0.0f
+    //breeze.linalg.csvwrite(new File("/tmp/activated"), activated.map(_.toDouble))
+    //breeze.linalg.csvwrite(new File("/tmp/deactivated"), deactivated.map(_.toDouble))
     val projectedActivated = projection * activated
     val projectedDeactivated = projection * deactivated
 
