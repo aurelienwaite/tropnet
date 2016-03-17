@@ -99,7 +99,6 @@ object SMERT {
     activationFactor: Option[Double],
     sweepFunc: SweepFunc) = {
     val swept = indices.map { i =>
-      println(i)
       nbests.value(i)
     }.map(Sweep.sweep(point, directions, sweepFunc)_)
     println(s"Done iteration")

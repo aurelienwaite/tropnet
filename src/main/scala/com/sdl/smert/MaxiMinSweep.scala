@@ -133,18 +133,19 @@ object MaxiMinSweep {
 
     //for (((_, _), i) <- minned) print(s"$i, ")
 
+    case class IB(start: Float, end: Float, b: BleuStats)
+        
     val endMinned = ((DenseMatrix.zeros[Float](0, 0), ArrayBuffer.empty), Float.PositiveInfinity)
-
     val maximinned = for (seq <- (minned :+ endMinned).sliding(2)) yield seq match {
       case Seq(((mat, bs), start), ((_, _), end)) => {
         val swept = Sweep.sweepLine(mat)
         val intervals = extractIntervals(swept)
         //println(s"$start, $end " + intervals.mkString(", "))
         val filtered = for (interval <- intervals) yield {
-          if (interval.start >= start && interval.end < end) Seq(interval) // interval is contained
-          else if (interval.start < start && interval.end > start && interval.end < end) Seq(I(start, interval.end, interval.index)) //interval starts before
-          else if (interval.start >= start && interval.start < end && interval.end >= end) Seq(I(interval.start, end, interval.index)) // interval ends after
-          else if (interval.start < start && interval.end >= end) Seq(I(start, end, interval.index)) // interval contains 
+          if (interval.start >= start && interval.end < end) Seq(IB(interval.start, interval.end, bs(interval.index))) // interval is contained
+          else if (interval.start < start && interval.end > start && interval.end < end) Seq(IB(start, interval.end, bs(interval.index))) //interval starts before
+          else if (interval.start >= start && interval.start < end && interval.end >= end) Seq(IB(interval.start, end, bs(interval.index))) // interval ends after
+          else if (interval.start < start && interval.end >= end) Seq(IB(start, end, bs(interval.index))) // interval contains 
           else Seq.empty // intervals do not overlap
         }
         val res = filtered.flatten.toSeq
@@ -156,10 +157,10 @@ object MaxiMinSweep {
 
     val mmSeq = maximinned.flatten.toSeq
 
-    val mmMerged = mmSeq.tail.foldLeft(ArrayBuffer[I](mmSeq.head)) { (accum, next) =>
-      if (accum.last.index == next.index) {
+    val mmMerged = mmSeq.tail.foldLeft(ArrayBuffer[IB](mmSeq.head)) { (accum, next) =>
+      if (accum.last.b == next.b) {
         val last = accum.remove(accum.length - 1)
-        accum += I(last.start, next.end, next.index)
+        accum += IB(last.start, next.end, next.b)
       } else
         accum += next
     }
@@ -184,7 +185,7 @@ object MaxiMinSweep {
     }*/
     
     //println(mmMerged)
-    val res = mmMerged.map(i => (i.start, bs(i.index)))
+    val res = mmMerged.map(i => (i.start, i.b))
     res
   }
   //sys.exit()
