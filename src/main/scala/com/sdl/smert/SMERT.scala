@@ -101,7 +101,6 @@ object SMERT {
     val swept = indices.map { i =>
       nbests.value(i)
     }.map(Sweep.sweep(point, directions, sweepFunc)_)
-    println(s"Done iteration")
     val reduced = swept.reduce((a, b) => {
       for (((bsA, seqA), (bsB, seqB)) <- a zip b) yield {
         (bsA + bsB, (seqA ++ seqB))

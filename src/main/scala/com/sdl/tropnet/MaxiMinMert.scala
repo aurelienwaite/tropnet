@@ -53,8 +53,8 @@ object MaxiMinMert extends App {
     initialPoint = smertInitial,
     noOfInitials = 0,
     sweepFunc = MaxiMinSweep.maxiMinSweepLine(0 until (toOptimise.params.length))_,
-    noOfRandom = 0 //,
-    //activationFactor = Option(0.01)
+    noOfRandom = 39,
+    activationFactor = Option(0.01)
     )
   val (point, (newBleu, bp)) = SMERT.doSmert(input.seq, conf)
   val newPoint = point(0 until toOptimise.params.length)
