@@ -9,6 +9,7 @@ import scala.annotation.tailrec
 import scala.collection.mutable.Buffer
 import scala.collection.mutable.ArrayBuffer
 import java.io.File
+import breeze.linalg.max
 
 object MaxiMinSweep {
 
@@ -162,13 +163,33 @@ object MaxiMinSweep {
       } else
         accum += next
     }
+    
+    /*for (i <- mmMerged)  {
+      val mid = if (i.start ==  Float.NegativeInfinity && i.end == Float.PositiveInfinity)
+        0
+      else if(i.start == Float.NegativeInfinity) 
+        i.end - 1
+      else if (i.end == Float.PositiveInfinity)
+        i.start + 1
+      else 
+        (i.start + i.end) /2
+      val p = DenseVector(mid, 1).t * projection
+      println(s"$i $mid ${p.t}")
+      val neuron = p.t.copy
+      neuron(-1) = 0.0f
+      neuron(-2) = 0.0f
+      println(neuron)
+      val scores = (p*activated).t
+      println(scores.toArray.view.zipWithIndex.maxBy(_._1))
+    }*/
+    
     //println(mmMerged)
     val res = mmMerged.map(i => (i.start, bs(i.index)))
     res
   }
-    //sys.exit()
+  //sys.exit()
 
-    /*@tailrec
+  /*@tailrec
     def sweepOverMinned(in: List[((DenseMatrix[Float], IndexedSeq[BleuStats]), Float)], accum: Buffer[(Float, BleuStats)]): Seq[(Float, Int)] =
       in match {
         case Nil => Nil

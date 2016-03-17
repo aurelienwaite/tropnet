@@ -46,7 +46,9 @@ object MaxiMinMert extends App {
     (res, bs)
   }
   breeze.linalg.csvwrite(new File("/tmp/fire"), input(0)._1.map(_.toDouble))
-  val smertInitial = DenseVector.vertcat(toOptimise.params, DenseVector(others.map(_.multiplier.toFloat): _*))
+  val scaled = toOptimise.params :* toOptimise.multiplier
+  val smertInitial = DenseVector.vertcat(scaled, DenseVector(others.map(_.multiplier.toFloat): _*))
+  //println(smertInitial)
   val conf = SMERT.Config(
     initialPoint = smertInitial,
     noOfInitials = 0,
