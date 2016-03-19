@@ -24,7 +24,7 @@ object Sweep {
   def sweepLine(in: DenseMatrix[Float], projection: DenseMatrix[Float], bs: IndexedSeq[BleuStats]): IndexedSeq[(Float, BleuStats)] = {
     require(projection.rows == 2, "Can only project to lines")
     require(projection.cols == in.rows, "Input matrix and projection matrix must have the same dimension")
-    require(in.rows == bs.size, s"Input matrix and BleuStats must have same dimension ${in.rows} != ${bs.size}")
+    require(in.cols == bs.size, s"Input matrix and BleuStats must have same dimension ${in.cols} != ${bs.size}")
     val projected = projection * in
     val intervals = sweepProjected(projected)
     for ((currInterval, currBS) <- intervals) yield (currInterval, bs(currBS))
