@@ -26,11 +26,11 @@ object Sweep {
     require(projection.cols == in.rows, "Input matrix and projection matrix must have the same dimension")
     require(in.rows == bs.size, s"Input matrix and BleuStats must have same dimension ${in.rows} != ${bs.size}")
     val projected = projection * in
-    val intervals = sweepLine(projected)
+    val intervals = sweepProjected(projected)
     for ((currInterval, currBS) <- intervals) yield (currInterval, bs(currBS))
   }
   
-  def sweepLine(projected : DenseMatrix[Float]) = {  
+  def sweepProjected(projected : DenseMatrix[Float]) = {  
     val s = breeze.linalg.argsort(projected(0, ::).t) // s for sorted
     val a: mutable.IndexedSeq[L] = mutable.IndexedSeq.fill(projected.cols)(null)
     var j, sIndex = 0

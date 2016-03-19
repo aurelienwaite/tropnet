@@ -17,6 +17,8 @@ import scala.annotation.tailrec
 import org.apache.commons.math3.random.RandomGenerator
 import breeze.stats.distributions.Gaussian
 import breeze.stats.distributions.RandBasis
+import com.sdl.smert.Sweep._
+import com.sdl.smert.MaxiMinSweep
 
 object Caetano {
 
@@ -74,15 +76,26 @@ object Caetano {
       (fire, fireBS) = fireVectors(mat, other, toOptimise.multiplier, bs)
     } yield (fire, fireBS)
     //breeze.linalg.csvwrite(new File("/tmp/fire"), input(0)._1.map(_.toDouble))
-    val smertInitial = DenseVector.vertcat(toOptimise.params, DenseVector(other.map(_.multiplier.toFloat) :_*))
+    val smertInitial = DenseVector.vertcat(toOptimise.params :* toOptimise.multiplier, DenseVector(other.map(_.multiplier.toFloat) :_*))
+    val(noOfInitials, noOfRandom, sweepFunc: SweepFunc) = if(toOptimise.multiplier <0) (
+       0, 
+       0, 
+       MaxiMinSweep.maxiMinSweepLine(0 until (toOptimise.params.length))_
+      )
+    else (
+      10,
+      39,
+      sweepLine _
+    )
     val conf = SMERT.Config(
       initialPoint = smertInitial,
-      noOfInitials = 10,
-      noOfRandom = 39,
+      noOfInitials = noOfInitials,
+      noOfRandom = noOfRandom,
+      sweepFunc = sweepFunc,
       random = r,
       activationFactor = Option(0.01))
     val (point, (newBleu, bp)) = SMERT.doSmert(input.seq, conf)
-    val newPoint = point(0 until toOptimise.params.length)
+    val newPoint = point(0 until toOptimise.params.length) :/ toOptimise.multiplier
     val multipliers = point(toOptimise.params.length to -1).toArray
     val withMultipliers = for ((n, m) <- other zip multipliers) yield Neuron(n.params, m)
     val res = Neuron(newPoint, toOptimise.multiplier) +: withMultipliers

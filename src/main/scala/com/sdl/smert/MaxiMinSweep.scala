@@ -138,7 +138,7 @@ object MaxiMinSweep {
     val endMinned = ((DenseMatrix.zeros[Float](0, 0), ArrayBuffer.empty), Float.PositiveInfinity)
     val maximinned = for (seq <- (minned :+ endMinned).sliding(2)) yield seq match {
       case Seq(((mat, bs), start), ((_, _), end)) => {
-        val swept = Sweep.sweepLine(mat)
+        val swept = Sweep.sweepProjected(mat)
         val intervals = extractIntervals(swept)
         //println(s"$start, $end " + intervals.mkString(", "))
         val filtered = for (interval <- intervals) yield {

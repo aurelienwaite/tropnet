@@ -1,6 +1,6 @@
 package com.sdl.smert
 
-import com.sdl.smert.Sweep.sweepLine
+import com.sdl.smert.Sweep.sweepProjected
 import com.sdl.smert.SMERT.nbestToMatrix
 import org.scalatest._
 import org.scalatest.Matchers
@@ -22,7 +22,7 @@ class SweepLineSpec extends FlatSpec with Matchers{
         (1f,0f,0f,0f,0f,0f,0f,0f,0f,0f,0f,0f ),
         (1.000000f,0.820073f,1.048347f,0.798443f,0.349793f,0.286489f,15.352371f,-5.753633f,-3.766533f,0.052922f,0.624889f,-0.015877f)
     )
-    val sweptIntervals = sweepLine(projection * nbestToMatrix(nBest)).map(_._1)
+    val sweptIntervals = sweepProjected(projection * nbestToMatrix(nBest)).map(_._1)
     val lmertIntervals = Array[Float](Float.NegativeInfinity, -1.3284541f, -0.903594f, -0.85727775f, -0.77947056f, -0.26694396f, -0.1196983f, -0.056937158f, 1.1183509f)
     sweptIntervals.length should be(lmertIntervals.length)
     for(interval <- sweptIntervals zip lmertIntervals) {
@@ -43,7 +43,7 @@ class SweepLineSpec extends FlatSpec with Matchers{
         (0f,1.000000f,0.820073f,1.048347f,0.798443f,0.349793f,0.286489f,15.352371f,-5.753633f,-3.766533f,0.052922f,0.624889f,-0.015877f)
     )
     val projection = DenseMatrix.horzcat(a,b)
-    val sweptIntervals = sweepLine(projection * nbestToMatrix(nBest)).map(_._1) 
+    val sweptIntervals = sweepProjected(projection * nbestToMatrix(nBest)).map(_._1) 
     println(sweptIntervals)
   }
   
