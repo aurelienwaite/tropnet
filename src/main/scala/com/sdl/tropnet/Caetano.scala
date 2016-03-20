@@ -77,7 +77,7 @@ object Caetano {
     } yield (fire, fireBS)
     //breeze.linalg.csvwrite(new File("/tmp/fire"), input(0)._1.map(_.toDouble))
     val smertInitial = DenseVector.vertcat(toOptimise.params :* toOptimise.multiplier, DenseVector(other.map(_.multiplier.toFloat) :_*))
-    val(noOfInitials, noOfRandom, sweepFunc: SweepFunc) = if(toOptimise.multiplier <0) (
+    val(noOfInitials, noOfRandom, sweepFunc: SweepFunc) = if(toOptimise.multiplier < 0) (
        0, 
        0, 
        MaxiMinSweep.maxiMinSweepLine(0 until (toOptimise.params.length))_
@@ -95,10 +95,11 @@ object Caetano {
       random = r,
       activationFactor = Option(0.01))
     val (point, (newBleu, bp)) = SMERT.doSmert(input.seq, conf)
-    val newPoint = point(0 until toOptimise.params.length) :/ toOptimise.multiplier
+    val newMultiplier = if (toOptimise.multiplier < 0) -1.0f else 1.0f
+    val newPoint = point(0 until toOptimise.params.length) :* newMultiplier
     val multipliers = point(toOptimise.params.length to -1).toArray
     val withMultipliers = for ((n, m) <- other zip multipliers) yield Neuron(n.params, m)
-    val res = Neuron(newPoint, toOptimise.multiplier) +: withMultipliers
+    val res = Neuron(newPoint, newMultiplier) +: withMultipliers
     (res , (newBleu, bp))
   }
 
