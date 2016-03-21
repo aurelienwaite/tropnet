@@ -30,35 +30,46 @@ object Caetano {
     }
   }
   
+  def withBiases(mat: DenseMatrix[Float], others: Seq[Neuron]) = {
+    val ones = DenseMatrix.ones[Float](1, mat.cols)
+    val withBias = DenseMatrix.vertcat(ones, mat)
+    val activations = (for (n <- others) yield (n.params.t * withBias).t.map(math.max(_, 0)))
+    val activationsMatrix = DenseMatrix.vertcat(activations.map(_.toDenseMatrix): _*)
+    val res = DenseMatrix.vertcat(withBias, activationsMatrix)
+    res
+  }
+  
   /**
    * Create the fire vectors.
    */
-  def fireVectors(in: DenseMatrix[Float], neurons: Seq[Neuron], multiplier: Float, bleuStats: IndexedSeq[BleuStats]) = {
+  def fireVectors(in: DenseMatrix[Float], neurons: Seq[Neuron], bleuStats: IndexedSeq[BleuStats]) = {
     val fireVecs = ArrayBuffer[DenseVector[Float]]()
     val fireBS = ArrayBuffer[BleuStats]()
     val ones = DenseMatrix.ones[Float](1, in.cols)
     //val absolute = math.abs(multiplier)
     val withBias = DenseMatrix.vertcat(ones, in)
-    val scaled = withBias.map(_ / multiplier)
+    //val scaled = withBias.map(_ / multiplier)
     val activations = (for (n <- neurons) yield (n.params.t * withBias).t.map(math.max(_, 0)))
     val activationSum = activations.reduce(_+_)
-    for (c <- 0 until scaled.cols) {
+    for (c <- 0 until withBias.cols) {
       val activationsVector = DenseVector.vertcat(activations.map(a=>a(c to c)):_*)
       if (activationSum(c) != 0f) {
-        val fireVec = DenseVector.vertcat(DenseVector.zeros[Float](scaled.rows), activationsVector)
+        val fireVec = DenseVector.vertcat(DenseVector.zeros[Float](withBias.rows), activationsVector)
         fireVecs += fireVec
         fireBS += bleuStats(c).deleteActivations()
       }
-      val row = DenseVector.vertcat(scaled(::, c), activationsVector)
+      val row = DenseVector.vertcat(withBias(::, c), activationsVector)
       fireVecs += row
       fireBS += bleuStats(c)
     }
-    fireVecs += DenseVector.zeros[Float](scaled.rows + neurons.size)
+    fireVecs += DenseVector.zeros[Float](withBias.rows + neurons.size)
     fireBS += BleuStats.bad
     val out = DenseMatrix.horzcat(fireVecs.map(_.toDenseMatrix.t): _*)
     //val res = if(multiplier < 0) out.map(_ * -1) else out
     (out, fireBS)
   }
+  
+  
 
 
   def printNeurons(neurons: Seq[Neuron]) = 
@@ -73,8 +84,11 @@ object Caetano {
       nbest <- nbests
       bs = nbest map (_.bs)
       mat = SMERT.nbestToMatrix(nbest)
-      (fire, fireBS) = fireVectors(mat, other, toOptimise.multiplier, bs)
-    } yield (fire, fireBS)
+      //(fire, fireBS) = fireVectors(mat, other, bs)
+    } yield if (toOptimise.multiplier < 0) 
+      (withBiases(mat, other), bs)
+    else
+      fireVectors(mat, other, bs)
     //breeze.linalg.csvwrite(new File("/tmp/fire"), input(0)._1.map(_.toDouble))
     val smertInitial = DenseVector.vertcat(toOptimise.params :* toOptimise.multiplier, DenseVector(other.map(_.multiplier.toFloat) :_*))
     val(noOfInitials, noOfRandom, sweepFunc: SweepFunc) = if(toOptimise.multiplier < 0) (

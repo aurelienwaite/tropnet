@@ -38,7 +38,6 @@ object MaxiMinMert extends App {
     mat = SMERT.nbestToMatrix(nbest)
     ones = DenseMatrix.ones[Float](1, mat.cols)
     withBias = DenseMatrix.vertcat(ones, mat)
-    scaled = withBias.map(_ / toOptimise.multiplier)
   } yield {
     val activations = (for (n <- others) yield (n.params.t * withBias).t.map(math.max(_, 0)))
     val activationsMatrix = DenseMatrix.vertcat(activations.map(_.toDenseMatrix): _*)
