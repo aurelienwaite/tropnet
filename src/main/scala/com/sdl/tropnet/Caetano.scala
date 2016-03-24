@@ -107,7 +107,7 @@ object Caetano {
       noOfRandom = noOfRandom,
       sweepFunc = sweepFunc,
       random = r,
-      activationFactor = Option(0.01))
+      activationFactor = None)
     val (point, (newBleu, bp)) = SMERT.doSmert(input.seq, conf)
     val newMultiplier = if (toOptimise.multiplier < 0) -1.0f else 1.0f
     val newPoint = point(0 until toOptimise.params.length) :* newMultiplier
