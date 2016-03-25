@@ -159,7 +159,7 @@ object Caetano {
     val neurons = List.fill(NO_OF_UNITS){
       val n = Neuron(DenseVector.rand(13, Gaussian(0, 1)(rb).map(_.toFloat)), 1)
       //hack to ensure all units fire at start
-      n.params(0) = 999f
+      //n.params(0) = 999f
       n
     }
     
