@@ -24,9 +24,9 @@ import com.sdl.smert.Sweep._
 
 object SMERT {
 
-  type BreezeNBest = Seq[(DenseMatrix[Float], IndexedSeq[BleuStats])]
+  type BreezeNBest = (DenseMatrix[Float], IndexedSeq[BleuStats])
 
-  def computeScore(nbest: BreezeNBest, params: DenseVector[Float]) = nbest.map {
+  def computeScore(nbests: RDD[BreezeNBest], params: DenseVector[Float]) = nbests.map {
     case (proj, bs) => {
       val scores = (params.t * proj).t
       bs(argsort(scores).last)
@@ -92,15 +92,12 @@ object SMERT {
   }
 
   def iteration(
-    nbests: Broadcast[Seq[Tuple2[DenseMatrix[Float], IndexedSeq[BleuStats]]]],
-    indices: RDD[Int],
+    nbests: RDD[BreezeNBest],
     point: DenseVector[Float],
     directions: DenseMatrix[Float],
     activationFactor: Option[Double],
     sweepFunc: SweepFunc) = {
-    val swept = indices.map { i =>
-      nbests.value(i)
-    }.map(Sweep.sweep(point, directions, sweepFunc)_)
+    val swept = nbests.map(Sweep.sweep(point, directions, sweepFunc)_)
     val reduced = swept.reduce((a, b) => {
       for (((bsA, seqA), (bsB, seqB)) <- a zip b) yield {
         (bsA + bsB, (seqA ++ seqB))
@@ -140,8 +137,7 @@ object SMERT {
     sc: SparkContext,
     prevPoint: DenseVector[Float],
     prevBleu: (Double, Double),
-    nbests: Broadcast[BreezeNBest],
-    indices: RDD[Int],
+    nbests: RDD[BreezeNBest],
     deltaBleu: Double,
     r: RandBasis,
     noOfRandom: Int,
@@ -150,9 +146,9 @@ object SMERT {
     activationFactor: Option[Double],
     sweepFunc: Sweep.SweepFunc): (DenseVector[Float], (Double, Double)) = {
     val directions = generateDirections(r, prevPoint.length, noOfRandom, affineDims)
-    val (point, (bleu, bp)) = iteration(nbests, indices, prevPoint, directions, activationFactor, sweepFunc)
+    val (point, (bleu, bp)) = iteration(nbests, prevPoint, directions, activationFactor, sweepFunc)
     val (verifiedBleu, verifiedBP) = if (verify)
-      computeScore(nbests.value, point.t).computeBleu(None)
+      computeScore(nbests, point.t).computeBleu(None)
     else
       (0.0, 0.0)
     println(point)
@@ -161,13 +157,12 @@ object SMERT {
     if ((bleu - prevBleu._1) < deltaBleu)
       (prevPoint, prevBleu)
     else
-      iterate(sc, point.t, (bleu, bp), nbests, indices, deltaBleu, r, noOfRandom, affineDims, verify, activationFactor, sweepFunc)
+      iterate(sc, point.t, (bleu, bp), nbests, deltaBleu, r, noOfRandom, affineDims, verify, activationFactor, sweepFunc)
   }
 
-  def doSmert(nbests: Seq[(DenseMatrix[Float], IndexedSeq[BleuStats])], conf: Config)(implicit sc: SparkContext): (DenseVector[Float], (Double, Double)) = {
+  def doSmert(nbests: RDD[BreezeNBest], conf: Config)(implicit sc: SparkContext): (DenseVector[Float], (Double, Double)) = {
     import conf._
     val rb = new RandBasis(random)
-    val indices = sc.parallelize(0 until nbests.length)
     val nbestsBroadcast = sc.broadcast(nbests)
     val initials = scala.collection.immutable.Vector(initialPoint) ++
       (for (i <- 0 until noOfInitials) yield {
@@ -176,7 +171,7 @@ object SMERT {
         tmp
       })
     val res = for (i <- initials.par)
-      yield iterate(sc, i, (0.0, 0.0), nbestsBroadcast, indices, deltaBleu, rb, noOfRandom, affineDims, verify, activationFactor, sweepFunc)
+      yield iterate(sc, i, (0.0, 0.0), nbests, deltaBleu, rb, noOfRandom, affineDims, verify, activationFactor, sweepFunc)
     val (finalPoint, (finalBleu, finalBP)) = res.maxBy(_._2._1)
     println(f"Found final point with BLEU $finalBleu%.6f [$finalBP%.4f]!")
     (finalPoint, (finalBleu, finalBP))
@@ -229,7 +224,8 @@ object SMERT {
           (mat, bs)
         }
     }.seq
-    val (finalPoint, _) = doSmert(nbests, cliConf)
+    val nbestsRDD = sc.parallelize(nbests).repartition(500).cache()
+    val (finalPoint, _) = doSmert(nbestsRDD, cliConf)
     breeze.linalg.csvwrite(out, finalPoint.toDenseMatrix.map(_.toDouble))
     println(finalPoint)
   }

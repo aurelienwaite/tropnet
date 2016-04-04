@@ -55,7 +55,8 @@ object MaxiMinMert extends App {
     noOfRandom = 39,
     activationFactor = Option(0.01)
     )
-  val (point, (newBleu, bp)) = SMERT.doSmert(input.seq, conf)
+  val rdd = sc.parallelize(input.seq).repartition(500).cache
+  val (point, (newBleu, bp)) = SMERT.doSmert(rdd, conf)
   val newPoint = point(0 until toOptimise.params.length)
   val multipliers = point(toOptimise.params.length to -1).toArray
   val withMultipliers = for ((n, m) <- others zip multipliers) yield Neuron(n.params, m)

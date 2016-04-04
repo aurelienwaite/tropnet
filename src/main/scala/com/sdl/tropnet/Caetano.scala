@@ -19,6 +19,7 @@ import breeze.stats.distributions.Gaussian
 import breeze.stats.distributions.RandBasis
 import com.sdl.smert.Sweep._
 import com.sdl.smert.MaxiMinSweep
+import org.apache.spark.rdd.RDD
 
 object Caetano {
 
@@ -78,17 +79,15 @@ object Caetano {
     
   
 
-  def optimiseNeuron(nbests: Seq[NBest], toOptimise: Neuron,
+  def optimiseNeuron(nbests: RDD[SMERT.BreezeNBest], toOptimise: Neuron,
                      other: Seq[Neuron], r: RandomGenerator)(implicit sc: SparkContext) = {
-    val input = for {
-      nbest <- nbests
-      bs = nbest map (_.bs)
-      mat = SMERT.nbestToMatrix(nbest)
-      //(fire, fireBS) = fireVectors(mat, other, bs)
+    
+    val smertInput = (for{
+      (mat, bs) <- nbests
     } yield if (toOptimise.multiplier < 0) 
       (withBiases(mat, other), bs)
     else
-      fireVectors(mat, other, bs)
+      fireVectors(mat, other, bs)).cache
     //breeze.linalg.csvwrite(new File("/tmp/fire"), input(0)._1.map(_.toDouble))
     val smertInitial = DenseVector.vertcat(toOptimise.params :* toOptimise.multiplier, DenseVector(other.map(_.multiplier.toFloat) :_*))
     val(noOfInitials, noOfRandom, sweepFunc: SweepFunc) = if(toOptimise.multiplier < 0) (
@@ -108,7 +107,7 @@ object Caetano {
       sweepFunc = sweepFunc,
       random = r,
       activationFactor = None)
-    val (point, (newBleu, bp)) = SMERT.doSmert(input.seq, conf)
+    val (point, (newBleu, bp)) = SMERT.doSmert(smertInput, conf)
     val newMultiplier = if (toOptimise.multiplier < 0) -1.0f else 1.0f
     val newPoint = point(0 until toOptimise.params.length) :* newMultiplier
     val multipliers = point(toOptimise.params.length to -1).toArray
@@ -124,7 +123,7 @@ object Caetano {
     }
 
   @tailrec
-  def iterate(nbests: Seq[NBest], neurons: List[Neuron], bleu: Double, r: RandomGenerator)(implicit sc: SparkContext): Seq[Neuron] = {
+  def iterate(nbests: RDD[SMERT.BreezeNBest], neurons: List[Neuron], bleu: Double, r: RandomGenerator)(implicit sc: SparkContext): Seq[Neuron] = {
     val isolated = isolateNeurons(Nil, neurons)
     val optimised = for ((p, other) <- isolated.drop(1)) yield {
       printNeurons(p +: other)
@@ -149,7 +148,13 @@ object Caetano {
     implicit val sc = new SparkContext(sparkConf)
 
     val nbests = loadUCamNBest(new File(args(0)))
-
+    val input = for {
+      nbest <- nbests.par
+      bs = nbest map (_.bs)
+      mat = SMERT.nbestToMatrix(nbest)
+    } yield(mat, bs)
+    val rdd = sc.parallelize(input.seq).repartition(500).cache
+    
     val generator = SMERT.getGenerator(11)
     val rb = new RandBasis(generator)
     
@@ -164,7 +169,7 @@ object Caetano {
     }
     
 
-    val nn = iterate(nbests, neurons, 0, generator)
+    val nn = iterate(rdd, neurons, 0, generator)
     printNeurons(nn)
   }
 
