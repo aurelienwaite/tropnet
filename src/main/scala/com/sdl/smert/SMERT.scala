@@ -170,7 +170,7 @@ object SMERT {
         affineDims.map { tmp(_) = 1f }
         tmp
       })
-    val res = for (i <- initials.par)
+    val res = for (i <- initials)
       yield iterate(sc, i, (0.0, 0.0), nbests, deltaBleu, rb, noOfRandom, affineDims, verify, activationFactor, sweepFunc)
     val (finalPoint, (finalBleu, finalBP)) = res.maxBy(_._2._1)
     println(f"Found final point with BLEU $finalBleu%.6f [$finalBP%.4f]!")
