@@ -130,10 +130,12 @@ object SMERT {
       } else
         (point.t, (0.0, 0.0))
     }
+    
+    val serialisable = updates.toIndexedSeq
 
     val validated = for (vs <- validationSet) yield {
       val bsRDD = for ((mat, bleuStats) <- vs) yield{
-        for ((param, (bleu, bp)) <- updates) yield {
+        for ((param, (bleu, bp)) <- serialisable) yield {
           val scores = (param * mat).t
           val maxIndex = argmax(scores)
           bleuStats(maxIndex)
@@ -146,7 +148,7 @@ object SMERT {
     val bestValidation = for (v <- validated) yield {
       val bleuScores = v.map { _.computeBleu()}
       val bestIndex = bleuScores.zipWithIndex.maxBy(_._1._1)._2
-      (updates(bestIndex)._1, bleuScores(bestIndex))
+      (serialisable(bestIndex)._1, bleuScores(bestIndex))
     }
     bestValidation.getOrElse(updates.maxBy(_._2))
   }
