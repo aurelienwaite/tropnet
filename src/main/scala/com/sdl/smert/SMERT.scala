@@ -96,7 +96,8 @@ object SMERT {
     point: DenseVector[Float],
     directions: DenseMatrix[Float],
     activationFactor: Option[Double],
-    sweepFunc: SweepFunc) = {
+    sweepFunc: SweepFunc,
+    validationSet: Option[RDD[BreezeNBest]]) = {
     val swept = nbests.map(Sweep.sweep(point, directions, sweepFunc)_)
     val reduced = swept.reduce((a, b) => {
       for (((bsA, seqA), (bsB, seqB)) <- a zip b) yield {
@@ -129,7 +130,25 @@ object SMERT {
       } else
         (point.t, (0.0, 0.0))
     }
-    updates.maxBy(_._2)
+
+    val validated = for (vs <- validationSet) yield {
+      val bsRDD = for ((mat, bleuStats) <- vs) yield{
+        for ((param, (bleu, bp)) <- updates) yield {
+          val scores = (param * mat).t
+          val maxIndex = argmax(scores)
+          bleuStats(maxIndex)
+        }
+      }
+      bsRDD.reduce{ (seqA, seqB) =>
+        for((a,b) <- seqA zip seqB) yield a + b
+      }
+    }
+    val bestValidation = for (v <- validated) yield {
+      val bleuScores = v.map { _.computeBleu()}
+      val bestIndex = bleuScores.zipWithIndex.maxBy(_._1._1)._2
+      (updates(bestIndex)._1, bleuScores(bestIndex))
+    }
+    bestValidation.getOrElse(updates.maxBy(_._2))
   }
 
   @tailrec
@@ -144,9 +163,10 @@ object SMERT {
     affineDims: Set[Int],
     verify: Boolean,
     activationFactor: Option[Double],
-    sweepFunc: Sweep.SweepFunc): (DenseVector[Float], (Double, Double)) = {
+    sweepFunc: Sweep.SweepFunc,
+    validationSet: Option[RDD[BreezeNBest]]): (DenseVector[Float], (Double, Double)) = {
     val directions = generateDirections(r, prevPoint.length, noOfRandom, affineDims)
-    val (point, (bleu, bp)) = iteration(nbests, prevPoint, directions, activationFactor, sweepFunc)
+    val (point, (bleu, bp)) = iteration(nbests, prevPoint, directions, activationFactor, sweepFunc, validationSet)
     val (verifiedBleu, verifiedBP) = if (verify)
       computeScore(nbests, point.t).computeBleu(None)
     else
@@ -157,10 +177,10 @@ object SMERT {
     if ((bleu - prevBleu._1) < deltaBleu)
       (prevPoint, prevBleu)
     else
-      iterate(sc, point.t, (bleu, bp), nbests, deltaBleu, r, noOfRandom, affineDims, verify, activationFactor, sweepFunc)
+      iterate(sc, point.t, (bleu, bp), nbests, deltaBleu, r, noOfRandom, affineDims, verify, activationFactor, sweepFunc, validationSet)
   }
 
-  def doSmert(nbests: RDD[BreezeNBest], conf: Config)(implicit sc: SparkContext): (DenseVector[Float], (Double, Double)) = {
+  def doSmert(nbests: RDD[BreezeNBest], conf: Config, validationSet: Option[RDD[BreezeNBest]] = None)(implicit sc: SparkContext): (DenseVector[Float], (Double, Double)) = {
     import conf._
     val rb = new RandBasis(random)
     val nbestsBroadcast = sc.broadcast(nbests)
@@ -171,7 +191,7 @@ object SMERT {
         tmp
       })
     val res = for (i <- initials)
-      yield iterate(sc, i, (0.0, 0.0), nbests, deltaBleu, rb, noOfRandom, affineDims, verify, activationFactor, sweepFunc)
+      yield iterate(sc, i, (0.0, 0.0), nbests, deltaBleu, rb, noOfRandom, affineDims, verify, activationFactor, sweepFunc, validationSet)
     val (finalPoint, (finalBleu, finalBP)) = res.maxBy(_._2._1)
     println(f"Found final point with BLEU $finalBleu%.6f [$finalBP%.4f]!")
     (finalPoint, (finalBleu, finalBP))

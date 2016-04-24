@@ -81,17 +81,15 @@ object Caetano {
     
   
 
-  def optimiseNeuron(nbests: RDD[SMERT.BreezeNBest], toOptimise: Neuron,
+  def optimiseNeuron(train: RDD[SMERT.BreezeNBest], dev: RDD[SMERT.BreezeNBest], toOptimise: Neuron,
                      other: Seq[Neuron], r: RandomGenerator)(implicit sc: SparkContext) = {
     
-    val smertInput = (for{
+    def transformNBest(nbests: RDD[SMERT.BreezeNBest]) = for{
       (mat, bs) <- nbests
     } yield if (toOptimise.multiplier < 0) 
       (withBiases(mat, other), bs)
     else
-      fireVectors(mat, other, bs))//.persist(StorageLevel.MEMORY_ONLY_2)
-    //smertInput.checkpoint()
-    //breeze.linalg.csvwrite(new File("/tmp/fire"), input(0)._1.map(_.toDouble))
+      fireVectors(mat, other, bs)
     val smertInitial = DenseVector.vertcat(toOptimise.params :* toOptimise.multiplier, DenseVector(other.map(_.multiplier.toFloat) :_*))
     val(noOfInitials, noOfRandom, sweepFunc: SweepFunc) = if(toOptimise.multiplier < 0) (
        0, 
@@ -110,7 +108,7 @@ object Caetano {
       sweepFunc = sweepFunc,
       random = r,
       activationFactor = None)
-    val (point, (newBleu, bp)) = SMERT.doSmert(smertInput, conf)
+    val (point, (newBleu, bp)) = SMERT.doSmert(transformNBest(train), conf, Option(transformNBest(dev)))
     //smertInput.unpersist(blocking = true)
     val newMultiplier = if (toOptimise.multiplier < 0) -1.0f else 1.0f
     val newPoint = point(0 until toOptimise.params.length) :* newMultiplier
@@ -127,14 +125,14 @@ object Caetano {
     }
 
   @tailrec
-  def iterate(nbests: RDD[SMERT.BreezeNBest], neurons: List[Neuron], bleu: Double, r: RandomGenerator)(implicit sc: SparkContext): Seq[Neuron] = {
+  def iterate(nbests: RDD[SMERT.BreezeNBest], dev: RDD[SMERT.BreezeNBest], neurons: List[Neuron], bleu: Double, r: RandomGenerator)(implicit sc: SparkContext): Seq[Neuron] = {
     val isolated = isolateNeurons(Nil, neurons)
     //pc.tasksupport = new ForkJoinTaskSupport(new scala.concurrent.forkjoin.ForkJoinPool(2)) // TODO: Should read number of threads from spark conf
     val throttle = 4 // Spark can be overwhelmed if trying to tune many neurons at the same time. Throttle it with this val
     val grouped = isolated.drop(1).grouped(throttle).toStream
     val optimised = for (g <- grouped; (p, other) <- g.par) yield {
       printNeurons(p +: other)
-      optimiseNeuron(nbests, p, other, r)
+      optimiseNeuron(nbests, dev, p, other, r)
     }
     val (res, (newBleu, bp)) = optimised.maxBy(_._2._1)
     //if (newBleu - bleu < SMERT.Config().deltaBleu)
@@ -142,7 +140,7 @@ object Caetano {
     //else {
     println(s"Caetano iteration done: $newBleu")
     printNeurons(res)
-    iterate(nbests, res.toList, newBleu, r)
+    iterate(nbests, dev, res.toList, newBleu, r)
     //}
   }
 
@@ -160,10 +158,12 @@ object Caetano {
       bs = nbest map (_.bs)
       mat = SMERT.nbestToMatrix(nbest)
     } yield(mat, bs)
-    val rdd = sc.parallelize(input.seq).repartition(100).persist(StorageLevel.MEMORY_ONLY_2)
-    rdd.checkpoint()
-    //Force evaluation and caching of RDD
-    println(rdd.count)
+    val rdd = sc.parallelize(input.seq).repartition(100)
+    val split = rdd.randomSplit(Array(0.7,0.3))
+    for(s <- split) {
+      s.persist(StorageLevel.MEMORY_ONLY_2)
+      s.checkpoint()
+    }
 
     val generator = SMERT.getGenerator(11)
     val rb = new RandBasis(generator)
@@ -179,7 +179,7 @@ object Caetano {
     }
     
 
-    val nn = iterate(rdd, neurons, 0, generator)
+    val nn = iterate(split(0), split(1), neurons, 0, generator)
     printNeurons(nn)
   }
 
