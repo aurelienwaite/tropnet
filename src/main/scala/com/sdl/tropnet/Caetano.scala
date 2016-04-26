@@ -98,7 +98,7 @@ object Caetano {
       )
     else (
       0,
-      100,
+      50,
       sweepLine _
     )
     val conf = SMERT.Config(
