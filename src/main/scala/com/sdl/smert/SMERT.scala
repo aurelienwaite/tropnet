@@ -21,6 +21,7 @@ import breeze.stats.distributions.RandBasis
 import org.apache.commons.math3.random.RandomGenerator
 import org.apache.commons.math3.random.JDKRandomGenerator
 import com.sdl.smert.Sweep._
+import org.apache.spark.storage.StorageLevel
 
 object SMERT {
 
@@ -41,6 +42,7 @@ object SMERT {
 
   case class Config(
     nbestsDir: File = new File("."),
+    nbestsObjDir: Option[String] = None,
     initialPoint: DenseVector[Float] = DenseVector(),
     localThreads: Option[Int] = None,
     noOfPartitions: Int = 100,
@@ -53,16 +55,6 @@ object SMERT {
     verify: Boolean = false,
     activationFactor: Option[Double] = None,
     sweepFunc: SweepFunc = Sweep.sweepLine)
-
-  def doSvd(): Unit = {
-    /*    val trainingSet : RDD[org.apache.spark.mllib.linalg.Vector] = for(nbest <- nbests; hyp <- nbest) yield{
-      Vectors.dense(hyp.fVec.toArray)
-    }
-    trainin
-    val trainingSetMat = new RowMatrix(trainingSet)
-    val svd = trainingSetMat.computeSVD(, computeU = true)*/
-
-  }
 
   def generateDirections(r: RandBasis, d: Int, noOfRandom: Int, affineDims: Set[Int]) = {
     val axes = for (i <- 0 until d) yield {
@@ -130,23 +122,23 @@ object SMERT {
       } else
         (point.t, (0.0, 0.0))
     }
-    
+
     val serialisable = updates.toIndexedSeq
 
     val validated = for (vs <- validationSet) yield {
-      val bsRDD = for ((mat, bleuStats) <- vs) yield{
+      val bsRDD = for ((mat, bleuStats) <- vs) yield {
         for ((param, (bleu, bp)) <- serialisable) yield {
           val scores = (param * mat).t
           val maxIndex = argmax(scores)
           bleuStats(maxIndex)
         }
       }
-      bsRDD.reduce{ (seqA, seqB) =>
-        for((a,b) <- seqA zip seqB) yield a + b
+      bsRDD.reduce { (seqA, seqB) =>
+        for ((a, b) <- seqA zip seqB) yield a + b
       }
     }
     val bestValidation = for (v <- validated) yield {
-      val bleuScores = v.map { _.computeBleu()}
+      val bleuScores = v.map { _.computeBleu() }
       val bestIndex = bleuScores.zipWithIndex.maxBy(_._1._1)._2
       (serialisable(bestIndex)._1, bleuScores(bestIndex))
     }
@@ -185,7 +177,6 @@ object SMERT {
   def doSmert(nbests: RDD[BreezeNBest], conf: Config, validationSet: Option[RDD[BreezeNBest]] = None)(implicit sc: SparkContext): (DenseVector[Float], (Double, Double)) = {
     import conf._
     val rb = new RandBasis(random)
-    val nbestsBroadcast = sc.broadcast(nbests)
     val initials = scala.collection.immutable.Vector(initialPoint) ++
       (for (i <- 0 until noOfInitials) yield {
         val tmp = DenseVector.rand(initialPoint.size, Gaussian(0, 1)(rb)).map(_.toFloat)
@@ -231,22 +222,27 @@ object SMERT {
       opt[File]('o', "output") required () action { (x, c) =>
         c.copy(out = x)
       }
+      opt[String]("objects") action { (x, c) =>
+        c.copy(nbestsObjDir = Option(x))
+      }
     }
     val cliConf = parser.parse(args, Config()).getOrElse(sys.exit())
     println(cliConf)
     import cliConf._
-    val conf = new SparkConf().setAppName("SMERT")
+    val conf = new SparkConf().setAppName("SMERT").setIfMissing("spark.executor.heartbeatInterval", "100s")
     for (l <- localThreads) conf.setMaster(s"local[$l]")
     implicit val sc = new SparkContext(conf)
-    val nbests = loadUCamNBest(nbestsDir).par.map {
-      n =>
-        {
-          val mat = nbestToMatrix(n)
-          val bs = n map (_.bs)
-          (mat, bs)
-        }
-    }.seq
-    val nbestsRDD = sc.parallelize(nbests).repartition(500).cache()
+    sc.setCheckpointDir(".smertCheckpoint")
+    val hypsRDD = nbestsObjDir.map(sc.objectFile[NBest](_)).getOrElse{
+      val nbests = loadUCamNBest(nbestsDir)
+      sc.parallelize(nbests).repartition(500)
+    }
+    val nbestsRDD = hypsRDD.map { n =>
+        val mat = nbestToMatrix(n)
+        val bs = n map (_.bs)
+        (mat, bs)
+    }.persist(StorageLevel.MEMORY_ONLY_2)
+    nbestsRDD.checkpoint()
     val (finalPoint, _) = doSmert(nbestsRDD, cliConf)
     breeze.linalg.csvwrite(out, finalPoint.toDenseMatrix.map(_.toDouble))
     println(finalPoint)

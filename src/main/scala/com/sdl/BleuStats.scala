@@ -29,12 +29,8 @@ case class BleuStats(hits: Seq[(Int, Int)], refLength: Int, activated : Int, num
   }
   
   override def toString() = {
-    val builder = new StringBuilder()
-    for (hit <- hits) {
-      builder append hit._1 + "\t" + hit._2 + "\t"
-    }
-    builder.append(refLength)
-    builder.toString
+    val hitStrings = for (hit <- hits) yield s"${hit._1}/${hit._2}"
+    (hitStrings :+ refLength.toString).mkString("; ")
   }
   
   def deleteActivations() = 

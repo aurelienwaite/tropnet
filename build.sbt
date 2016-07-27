@@ -19,5 +19,6 @@ libraryDependencies ++= Seq(
 	"org.apache.spark" %% "spark-mllib" % "1.6.1" % "provided", 
 	"org.scalatest" %% "scalatest" % "2.2.4" % "test",
 	"org.scalanlp" %% "breeze-natives" % "0.11.2",
-	"com.github.scopt" %% "scopt" % "3.3.0"
+	"com.github.scopt" %% "scopt" % "3.3.0",
+	"com.lihaoyi" %% "upickle" % "0.4.1"	
 	)
