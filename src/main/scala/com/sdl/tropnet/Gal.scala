@@ -22,6 +22,7 @@ import upickle.default._
 import java.nio.file.Files
 import java.nio.file.Paths
 import org.apache.spark.rdd.RDD
+import scala.collection.immutable.BitSet
 
 /**
  * Do SVD on an NBest list. Command line arguments
@@ -51,44 +52,42 @@ object Gal {
       } yield (h.hyp.split(" "), (sentIndex, hypIndex))), 500).cache
     val trainRdd = makeRdd(args(0))
     println(trainRdd.count) // This count forces the rdd to be evaluated. Prevents a too many open files issue
-    val testRdd = makeRdd(args(2))
-    println(testRdd.count)
+    //val testRdd = makeRdd(args(2))
+    //println(testRdd.count)
     
     //val numHypsPerSent = (for((nbest, i) <- loadUCamNBest(new File(args(0))).view.zipWithIndex) yield i -> nbest.size).toMap        
     
     type WordsWithSentIndex = (Array[String], (Int, Int))
     
-    type Counts = (Int, Map[Int, Map[Int, Int]])
+    type Counts = (Int, Map[Int, BitSet])
     def reduceCountsPerSent[T](rdd: PairRDDFunctions[T, Counts]) = rdd.reduceByKey{ case((leftCount, leftMap) , (rightCount, rightMap)) => 
-      val summed = collection.mutable.Map.empty[Int, collection.mutable.Map[Int, Int]]
+      val unioned = collection.mutable.Map.empty[Int, BitSet]
       for {
-        (sentIndex, hypCounts) <- (leftMap.toSeq ++ rightMap.toSeq)
-        (hypIndex, count) <- hypCounts
+        (sentIndex, hypSet) <- (leftMap.toSeq ++ rightMap.toSeq)
       } {
-        val hypCounts = summed.getOrElseUpdate(sentIndex, collection.mutable.Map.empty)
-        hypCounts(hypIndex) = hypCounts.getOrElse(hypIndex, 0) + 1
+        unioned(sentIndex) = unioned.getOrElse(sentIndex, BitSet.empty) union hypSet
       }
-      (leftCount + rightCount, summed.map{case (k, v) => (k, v.toMap)}.toMap)
+      (leftCount + rightCount, unioned.toMap)
     }
     def countWords(rdd: RDD[WordsWithSentIndex]) = reduceCountsPerSent{
       rdd.flatMap{ case (words, (sentIndex, hypIndex)) => 
-        for(word <- words) yield (word, (1, Map(sentIndex -> Map(hypIndex -> 1))))
+        for(word <- words) yield (word, (1, Map(sentIndex -> BitSet(hypIndex))))
       }
     }
 
     val trainWords = countWords(trainRdd)
-    val testWords = countWords(testRdd)
-    val joinedWords = trainWords join testWords
+    //val testWords = countWords(testRdd)
+    //val joinedWords = trainWords join testWords
     
-    def collectFeatures[T](rdd: RDD[(T, (Counts, Counts))]) = rdd.sortBy(_._2._1._1, ascending=false)
-    .filter{ case (_, ((_, countsBySent), _)) => 
+    def collectFeatures[T](rdd: RDD[(T, Counts)]) = rdd.sortBy(_._2._1, ascending=false)
+    .filter{ case (_, (_, countsBySent)) => 
       countsBySent.size > 2 && 
         countsBySent.foldLeft(true){ case (atLeast3Hyps, (_, countsByHyp)) => atLeast3Hyps & countsByHyp.size > 2}
-    }.filter{ case (_, ((totalCount, _), _)) =>
-      totalCount > 1000
+    //}.filter{ case (_, (totalCount, _)) =>
+    //  totalCount > 1000
     }.collect
-    .map{case (feature, ((count, _), _)) => feature -> count}
-    val counted = collectFeatures(joinedWords)
+    .map{case (feature, (count, _)) => feature -> count}
+    val counted = collectFeatures(trainWords)
     println(counted.size)    
     val vocab = Map() ++ (for (((word, _), i) <- counted.view.zipWithIndex) yield word -> (i + 1))
     val pickledVocab = write(vocab)
@@ -96,13 +95,13 @@ object Gal {
     
     def countNgrams(rdd: RDD[WordsWithSentIndex]) = reduceCountsPerSent{
       rdd.flatMap{ case (words, (sentIndex, hypIndex) ) => 
-        for(ngram <- extractNgrams(words, vocab)) yield (ngram, (1, Map(sentIndex -> Map(hypIndex -> 1))))
+        for(ngram <- extractNgrams(words, vocab)) yield (ngram, (1, Map(sentIndex -> BitSet(hypIndex))))
       }
     }
     val trainNgrams = countNgrams(trainRdd)
-    val testNgrams = countNgrams(testRdd)
-    val joinedNgrams = trainNgrams join testNgrams
-    val ngramsCounted = collectFeatures(joinedNgrams)
+    //val testNgrams = countNgrams(testRdd)
+    //val joinedNgrams = trainNgrams join testNgrams
+    val ngramsCounted = collectFeatures(trainNgrams)
     val features = Map() ++ (for (((ngram, _), i) <- ngramsCounted.view.zipWithIndex) yield ngram -> (i+5))
     val pickledFeatures = write(features)
     Files.write(Paths.get(args(1) + "/features.jsn"), pickledFeatures.getBytes());
@@ -120,7 +119,7 @@ object Gal {
     }.persist(StorageLevel.MEMORY_ONLY_2)
     
     trainRdd.unpersist()
-    testRdd.unpersist()
+    //testRdd.unpersist()
     vectors.checkpoint()
 
     for (hyp <- vectors.take(10)) println(hyp)

@@ -42,9 +42,9 @@ object EnrichWithLSA extends App{
        val vecBuilder = new VectorBuilder[Double](features.size + 5)
        for((indexed, count) <- counts) vecBuilder.add(indexed, count)
        val vec = vecBuilder.toSparseVector(alreadySorted = false, keysAlreadyUnique = true)
-       val projected = mapping * vec
+       val projected = (mapping * vec)
        hyp.copy(fVec = hyp.fVec ++ (projected :* -1.0).toArray)
     }
   }
-  saveUCamNBest(transformed, new File(args(0) + "_LSA_NGRAMS_TEST"))  
+  saveUCamNBest(transformed, new File(args(0) + "_LSA_NGRAMS_REPRO"))  
 }
